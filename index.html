@@ -4,12 +4,11 @@
 <meta charset="utf-8">
 <title>W-82 掃描登錄</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   :root{
     --bg:#f2f3f0; --header:#4a5e48; --card:#ffffff;
     --line:#d9ddd4; --txt:#33372f; --sub:#7a8072;
-    --accent:#6b8266; --accent2:#a7b7a3; --danger:#b06a5f;
+    --accent:#6b8266; --danger:#b06a5f;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;background:var(--bg);color:var(--txt);
@@ -19,8 +18,16 @@
   header h1{font-size:16px;margin:0;font-weight:600;}
   #count{font-size:13px;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:20px;}
   .wrap{padding:16px;max-width:520px;margin:0 auto;}
-  #reader{width:100%;border-radius:14px;overflow:hidden;background:#000;}
-  .hint{color:var(--sub);font-size:13px;text-align:center;margin:12px 0;}
+
+  .scanbox{background:var(--card);border:2px dashed var(--accent);border-radius:16px;
+    padding:22px 16px;text-align:center;}
+  .scanbox .icon{font-size:40px;}
+  .scanbox .title{font-size:17px;font-weight:700;margin:8px 0 4px;}
+  .scanbox .sub{font-size:13px;color:var(--sub);}
+  #scanIn{position:absolute;opacity:0;pointer-events:none;left:-9999px;}
+  .waiting{margin-top:14px;font-size:15px;color:var(--accent);font-weight:600;}
+  .waiting.off{color:var(--danger);}
+
   .lastbox{background:var(--card);border:1px solid var(--line);border-radius:14px;
     padding:14px;margin-top:14px;}
   .lastbox .t{font-size:12px;color:var(--sub);margin-bottom:6px;}
@@ -29,31 +36,31 @@
     width:100%;color:#fff;background:var(--accent);cursor:pointer;}
   .btn:active{opacity:.85;}
   .btn.ghost{background:#fff;color:var(--txt);border:1px solid var(--line);}
-  .btn.danger{background:var(--danger);}
+  .row{display:flex;gap:10px;margin-top:14px;}
+  .row .btn{flex:1;}
 
   .modal{position:fixed;inset:0;background:rgba(30,34,28,.55);display:none;
     align-items:flex-end;justify-content:center;z-index:20;}
   .modal.show{display:flex;}
   .sheet{background:var(--card);width:100%;max-width:520px;border-radius:20px 20px 0 0;
-    padding:20px 18px calc(20px + env(safe-area-inset-bottom));animation:up .18s ease;}
+    padding:20px 18px calc(20px + env(safe-area-inset-bottom));animation:up .18s ease;
+    max-height:88vh;overflow-y:auto;}
   @keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
   .sheet .step{font-size:12px;color:var(--sub);}
   .sheet h2{font-size:19px;margin:6px 0 4px;}
-  .sheet .barcode{font-size:13px;color:var(--sub);margin-bottom:14px;word-break:break-all;}
   .fld{width:100%;padding:14px;font-size:18px;border:1.5px solid var(--line);
     border-radius:12px;outline:none;background:#fbfcfa;}
   .fld:focus{border-color:var(--accent);}
   .fld.upper{text-transform:uppercase;}
-  .row{display:flex;gap:10px;margin-top:14px;}
-  .row .btn{flex:1;}
   .qty{display:flex;align-items:center;gap:14px;justify-content:center;margin:6px 0;}
   .qty button{width:52px;height:52px;border-radius:14px;border:1px solid var(--line);
     background:#fff;font-size:26px;font-weight:600;color:var(--txt);}
   .qty input{width:80px;text-align:center;font-size:26px;font-weight:700;border:none;background:none;}
 
-  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
-  .tile{padding:16px 10px;border-radius:14px;border:1.5px solid var(--line);
-    background:#fbfcfa;font-size:16px;font-weight:600;text-align:center;color:var(--txt);}
+  .tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px;}
+  .tile{padding:14px 6px;border-radius:12px;border:1.5px solid var(--line);
+    background:#fbfcfa;font-size:14px;font-weight:600;text-align:center;color:var(--txt);
+    display:flex;align-items:center;justify-content:center;min-height:52px;line-height:1.2;}
   .tile:active,.tile.sel{background:var(--accent);color:#fff;border-color:var(--accent);}
 
   .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
@@ -69,16 +76,21 @@
 </header>
 
 <div class="wrap">
-  <div id="reader"></div>
-  <div class="row" style="margin-top:10px;">
-    <button class="btn ghost" id="btnTorch" style="display:none;">💡 開啟手電筒</button>
+  <!-- 掃描待命框：點一下確保聚焦，掃描槍一掃就進來 -->
+  <div class="scanbox" id="scanbox" onclick="focusScan()">
+    <div class="icon">📷</div>
+    <div class="title">掃描待命中</div>
+    <div class="sub">用掃描槍掃條碼，或點此框後手動輸入</div>
+    <div class="waiting" id="waitMsg">● 準備就緒，請掃描</div>
+    <input id="scanIn" autocomplete="off" autocapitalize="off" autocorrect="off">
   </div>
-  <p class="hint">條碼放框中央、距離約 15–25 公分，鏡頭對焦後即自動辨識。太近會對不到焦。</p>
+
   <div class="lastbox">
     <div class="t">上一筆</div>
     <div class="v" id="lastLine">尚無</div>
   </div>
-  <div class="row" style="margin-top:14px;">
+
+  <div class="row">
     <button class="btn ghost" id="btnManual">手動輸入單號</button>
   </div>
 </div>
@@ -90,78 +102,43 @@
 <div class="toast" id="toast"></div>
 
 <script>
-/* ============================================================
-   ★★★ 必改：貼上你的 Apps Script /exec 網址 ★★★
-   ============================================================ */
+/* ★ Apps Script /exec 網址 */
 const API_URL = 'https://script.google.com/macros/s/AKfycbxL69JQ8I0t41vSgF1xV_7iCfDHhJiK4zCW-QFHeghjj1wH-YyzUhg-zsr4VQqQxUqg/exec';
 
-/* ====== C 磚塊選單名單（★之後替換成正式名單）====== */
-const C_OPTIONS = ['範例A','範例B','範例C','範例D'];
+/* ★ C 磚塊選單名單 */
+const C_OPTIONS = ['西濃','佐川','郵局','黑貓','AMAZON','ASKUL LOGIST','ファイズEC宅配','久留米運送','福山通運','T.M.G','BIC CAMERA','五大物產','名鉄','ECO','浪速','トナミ運輸','無印良品','第一貨物','JPロジスティクス','FedEx','DHL'];
 
-/* ====== 狀態 ====== */
-let scanner=null, scanning=false, busy=false;
+let busy=false;
 let cur={ b:'', c:'', d:'', e:1, f:'', g:'' };
 let step=0;
 const STEPS=['b','c','e','f','g'];
 
-/* ====== 掃描 ====== */
-function startScanner(){
-  scanner = new Html5Qrcode("reader", { verbose:false });
-  const cfg={
-    fps:10,
-    // 一維條碼要「寬扁」的掃描框，跟著容器寬度自適應
-    qrbox:(vw,vh)=>{ const w=Math.floor(Math.min(vw,vh*2.2)*0.92); return {width:w, height:Math.floor(w*0.42)}; },
-    // 提高影像解析度，細線條碼才吃得到
-    videoConstraints:{
-      facingMode:"environment",
-      width:{ ideal:1920 },
-      height:{ ideal:1080 },
-      focusMode:"continuous",
-      advanced:[{focusMode:"continuous"}]
-    },
-    formatsToSupport:[
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.ITF,
-      Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODABAR
-    ],
-    experimentalFeatures:{ useBarCodeDetectorIfSupported:true }
-  };
-  // 不傳 facingMode 給第一參數（改由 videoConstraints 指定），避免衝突
-  scanner.start({facingMode:"environment"}, cfg, onScan, ()=>{})
-    .then(()=>{ scanning=true; setupTorch(); })
-    .catch(e=>{ document.getElementById('reader').innerHTML=
-      '<p style="color:#fff;padding:20px;text-align:center">無法開啟相機：'+e+'<br>請確認已允許相機權限</p>'; });
-}
+/* ====== 掃描槍輸入 ====== */
+const scanIn=document.getElementById('scanIn');
+function focusScan(){ if(!busy){ scanIn.focus(); } }
 
-/* 手電筒：光線不足時很有幫助 */
-let torchOn=false;
-function setupTorch(){
-  try{
-    const caps = scanner.getRunningTrackCapabilities();
-    if(caps && caps.torch){
-      const btn=document.getElementById('btnTorch');
-      btn.style.display='block';
-      btn.onclick=async()=>{
-        torchOn=!torchOn;
-        try{
-          await scanner.applyVideoConstraints({ advanced:[{torch:torchOn}] });
-          btn.textContent = torchOn ? '💡 關閉手電筒' : '💡 開啟手電筒';
-        }catch(e){ toast('此裝置不支援手電筒'); }
-      };
-    }
-  }catch(e){}
-}
-function pauseScan(){ if(scanner&&scanning){try{scanner.pause(true);}catch(e){}} }
-function resumeScan(){ if(scanner&&scanning){try{scanner.resume();}catch(e){}} }
+// 掃描槍掃完通常會送 Enter；沒有 Enter 的槍就靠字元間隔判斷
+let bufTimer=null;
+scanIn.addEventListener('keydown', e=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    const code=scanIn.value.trim();
+    scanIn.value='';
+    if(code) onScan(code);
+  }
+});
+scanIn.addEventListener('input', ()=>{
+  // 保險：若掃描槍不送 Enter，停止輸入 120ms 後自動觸發
+  clearTimeout(bufTimer);
+  bufTimer=setTimeout(()=>{
+    const code=scanIn.value.trim();
+    if(code.length>=4){ scanIn.value=''; onScan(code); }
+  },120);
+});
 
 function onScan(text){
   if(busy) return;
-  busy=true; pauseScan();
+  busy=true;
   navigator.vibrate&&navigator.vibrate(60);
   cur={ b:'', c:'', d:text.trim(), e:1, f:'', g:'' };
   step=0; renderStep();
@@ -177,14 +154,14 @@ function renderStep(){
   openModal();
   const key=STEPS[step];
   const stepLabel='步驟 '+(step+1)+' / 5　單號 '+cur.d;
-  if(key==='b') renderInput('客戶編號','B','text',stepLabel,true);
+  if(key==='b') renderInput('客戶編號','text',stepLabel,true,false);
   else if(key==='c') renderTiles(stepLabel);
   else if(key==='e') renderQty(stepLabel);
-  else if(key==='f') renderInput('備註（可留空）','F','text',stepLabel,false);
-  else if(key==='g') renderInput('重量','G','decimal',stepLabel,false,true);
+  else if(key==='f') renderInput('備註（可留空）','text',stepLabel,false,false);
+  else if(key==='g') renderInput('重量','decimal',stepLabel,false,true);
 }
 
-function renderInput(title,label,mode,stepLabel,upper,isLast){
+function renderInput(title,mode,stepLabel,upper,isLast){
   body.innerHTML=`
     <div class="step">${stepLabel}</div>
     <h2>${title}</h2>
@@ -256,14 +233,11 @@ function nextStep(){
   step++; renderStep();
 }
 
-/* ====== 送出（改用 fetch 呼叫 Apps Script）====== */
+/* ====== 送出 ====== */
 function submit(){
-  body.innerHTML=`<div class="step">寫入中…</div><h2>請稍候</h2>
-    <p class="barcode">單號 ${cur.d}</p>`;
-
+  body.innerHTML=`<div class="step">寫入中…</div><h2>請稍候</h2>`;
   fetch(API_URL, {
     method:'POST',
-    // text/plain 可避開 CORS 預檢（preflight），Apps Script 才收得到
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify({ action:'append', ...cur })
   })
@@ -285,14 +259,15 @@ function submit(){
 
 function resetToScan(){
   closeModal(); busy=false;
-  setTimeout(resumeScan,400);
+  scanIn.value='';
+  setTimeout(focusScan,300);
 }
 function cancelAll(){ resetToScan(); }
 
 /* ====== 手動輸入單號 ====== */
 document.getElementById('btnManual').onclick=()=>{
   if(busy) return;
-  busy=true; pauseScan();
+  busy=true;
   cur={ b:'', c:'', d:'', e:1, f:'', g:'' };
   openModal();
   body.innerHTML=`
@@ -325,8 +300,10 @@ function refreshCount(){
   }).catch(()=>{});
 }
 
-/* ====== 啟動 ====== */
-window.addEventListener('load',()=>{ startScanner(); refreshCount(); });
+// 點畫面任何地方都重新聚焦掃描框（避免焦點跑掉掃不進）
+document.addEventListener('click', ()=>{ if(!busy && !modal.classList.contains('show')) focusScan(); });
+
+window.addEventListener('load',()=>{ focusScan(); refreshCount(); });
 </script>
 </body>
 </html>
