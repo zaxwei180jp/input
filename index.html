@@ -70,7 +70,10 @@
 
 <div class="wrap">
   <div id="reader"></div>
-  <p class="hint">將條碼對準框內，掃到會自動跳出輸入</p>
+  <div class="row" style="margin-top:10px;">
+    <button class="btn ghost" id="btnTorch" style="display:none;">💡 開啟手電筒</button>
+  </div>
+  <p class="hint">條碼放框中央、距離約 15–25 公分，鏡頭對焦後即自動辨識。太近會對不到焦。</p>
   <div class="lastbox">
     <div class="t">上一筆</div>
     <div class="v" id="lastLine">尚無</div>
@@ -103,8 +106,19 @@ const STEPS=['b','c','e','f','g'];
 
 /* ====== 掃描 ====== */
 function startScanner(){
-  scanner = new Html5Qrcode("reader");
-  const cfg={ fps:10, qrbox:{width:260,height:150},
+  scanner = new Html5Qrcode("reader", { verbose:false });
+  const cfg={
+    fps:10,
+    // 一維條碼要「寬扁」的掃描框，跟著容器寬度自適應
+    qrbox:(vw,vh)=>{ const w=Math.floor(Math.min(vw,vh*2.2)*0.92); return {width:w, height:Math.floor(w*0.42)}; },
+    // 提高影像解析度，細線條碼才吃得到
+    videoConstraints:{
+      facingMode:"environment",
+      width:{ ideal:1920 },
+      height:{ ideal:1080 },
+      focusMode:"continuous",
+      advanced:[{focusMode:"continuous"}]
+    },
     formatsToSupport:[
       Html5QrcodeSupportedFormats.CODE_128,
       Html5QrcodeSupportedFormats.CODE_39,
@@ -114,11 +128,33 @@ function startScanner(){
       Html5QrcodeSupportedFormats.UPC_A,
       Html5QrcodeSupportedFormats.UPC_E,
       Html5QrcodeSupportedFormats.CODABAR
-    ]};
+    ],
+    experimentalFeatures:{ useBarCodeDetectorIfSupported:true }
+  };
+  // 不傳 facingMode 給第一參數（改由 videoConstraints 指定），避免衝突
   scanner.start({facingMode:"environment"}, cfg, onScan, ()=>{})
-    .then(()=>{scanning=true;})
+    .then(()=>{ scanning=true; setupTorch(); })
     .catch(e=>{ document.getElementById('reader').innerHTML=
       '<p style="color:#fff;padding:20px;text-align:center">無法開啟相機：'+e+'<br>請確認已允許相機權限</p>'; });
+}
+
+/* 手電筒：光線不足時很有幫助 */
+let torchOn=false;
+function setupTorch(){
+  try{
+    const caps = scanner.getRunningTrackCapabilities();
+    if(caps && caps.torch){
+      const btn=document.getElementById('btnTorch');
+      btn.style.display='block';
+      btn.onclick=async()=>{
+        torchOn=!torchOn;
+        try{
+          await scanner.applyVideoConstraints({ advanced:[{torch:torchOn}] });
+          btn.textContent = torchOn ? '💡 關閉手電筒' : '💡 開啟手電筒';
+        }catch(e){ toast('此裝置不支援手電筒'); }
+      };
+    }
+  }catch(e){}
 }
 function pauseScan(){ if(scanner&&scanning){try{scanner.pause(true);}catch(e){}} }
 function resumeScan(){ if(scanner&&scanning){try{scanner.resume();}catch(e){}} }
