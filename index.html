@@ -115,23 +115,39 @@ const STEPS=['b','c','e','f','g'];
 
 /* ====== 掃描槍輸入 ====== */
 const scanIn=document.getElementById('scanIn');
-function focusScan(){ if(!busy){ scanIn.focus(); } }
+function focusScan(){ if(!busy){ scanIn.focus({preventScroll:true}); } }
+
+/* 注音鍵盤攔截掃描槍時，字母會變注音符號。這裡把注音對應回英數。
+   對應依標準注音鍵盤配列（與 QWERTY 同鍵位）。 */
+const ZHUYIN_MAP={
+  'ㄅ':'1','ㄉ':'2','ˇ':'3','ˋ':'4','ㄓ':'5','ˊ':'6','˙':'7','ㄚ':'8','ㄞ':'9','ㄢ':'0',
+  'ㄆ':'q','ㄊ':'w','ㄍ':'e','ㄐ':'r','ㄔ':'t','ㄗ':'y','ㄧ':'u','ㄛ':'i','ㄟ':'o','ㄣ':'p',
+  'ㄇ':'a','ㄋ':'s','ㄎ':'d','ㄑ':'f','ㄕ':'g','ㄘ':'h','ㄨ':'j','ㄜ':'k','ㄠ':'l','ㄤ':';',
+  'ㄈ':'z','ㄌ':'x','ㄏ':'c','ㄒ':'v','ㄖ':'b','ㄙ':'n','ㄩ':'m','ㄝ':',','ㄡ':'.','ㄥ':'/',
+  'ㄦ':'-'
+};
+function fixZhuyin(s){
+  // 若字串含注音符號，逐字轉回；否則原樣返回
+  if(!/[ㄅ-ㄩˊˇˋ˙]/.test(s)) return s;
+  let out='';
+  for(const ch of s){ out += (ZHUYIN_MAP[ch]!==undefined ? ZHUYIN_MAP[ch] : ch); }
+  return out;
+}
 
 // 掃描槍掃完通常會送 Enter；沒有 Enter 的槍就靠字元間隔判斷
 let bufTimer=null;
 scanIn.addEventListener('keydown', e=>{
   if(e.key==='Enter'){
     e.preventDefault();
-    const code=scanIn.value.trim();
+    const code=fixZhuyin(scanIn.value).trim();
     scanIn.value='';
     if(code) onScan(code);
   }
 });
 scanIn.addEventListener('input', ()=>{
-  // 保險：若掃描槍不送 Enter，停止輸入 120ms 後自動觸發
   clearTimeout(bufTimer);
   bufTimer=setTimeout(()=>{
-    const code=scanIn.value.trim();
+    const code=fixZhuyin(scanIn.value).trim();
     if(code.length>=4){ scanIn.value=''; onScan(code); }
   },120);
 });
@@ -147,7 +163,11 @@ function onScan(text){
 /* ====== 依序彈窗 ====== */
 const modal=document.getElementById('modal');
 const body=document.getElementById('sheetBody');
-function openModal(){ modal.classList.add('show'); }
+function openModal(){
+  // 放開掃描框焦點，否則 iOS 以為實體鍵盤在用、不彈螢幕鍵盤
+  scanIn.blur();
+  modal.classList.add('show');
+}
 function closeModal(){ modal.classList.remove('show'); }
 
 function renderStep(){
@@ -166,13 +186,16 @@ function renderInput(title,mode,stepLabel,upper,isLast){
     <div class="step">${stepLabel}</div>
     <h2>${title}</h2>
     <input class="fld ${upper?'upper':''}" id="fld" inputmode="${mode==='decimal'?'decimal':'text'}"
-      ${mode==='decimal'?'':'autocapitalize="characters"'} value="${cur[STEPS[step]]||''}">
+      ${mode==='decimal'?'':'autocapitalize="characters"'} placeholder="點這裡輸入" value="${cur[STEPS[step]]||''}">
+    <div style="font-size:12px;color:var(--sub);margin-top:8px;">鍵盤沒跳出？連按兩下掃描槍扳機即可叫出鍵盤</div>
     <div class="row">
       <button class="btn ghost" onclick="cancelAll()">取消</button>
       <button class="btn" onclick="nextStep()">${isLast?'送出寫入':'下一步'}</button>
     </div>`;
   const f=document.getElementById('fld');
-  setTimeout(()=>f.focus(),100);
+  // iOS 需要真實觸控才彈鍵盤，先嘗試自動聚焦，失敗就靠使用者點框
+  setTimeout(()=>{ try{ f.focus({preventScroll:true}); }catch(e){} },150);
+  f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
   f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
 }
 
