@@ -117,21 +117,10 @@ const STEPS=['b','c','e','f','g'];
 const scanIn=document.getElementById('scanIn');
 function focusScan(){ if(!busy){ scanIn.focus({preventScroll:true}); } }
 
-/* 注音鍵盤攔截掃描槍時，字母會變注音符號。這裡把注音對應回英數。
-   對應依標準注音鍵盤配列（與 QWERTY 同鍵位）。 */
-const ZHUYIN_MAP={
-  'ㄅ':'1','ㄉ':'2','ˇ':'3','ˋ':'4','ㄓ':'5','ˊ':'6','˙':'7','ㄚ':'8','ㄞ':'9','ㄢ':'0',
-  'ㄆ':'q','ㄊ':'w','ㄍ':'e','ㄐ':'r','ㄔ':'t','ㄗ':'y','ㄧ':'u','ㄛ':'i','ㄟ':'o','ㄣ':'p',
-  'ㄇ':'a','ㄋ':'s','ㄎ':'d','ㄑ':'f','ㄕ':'g','ㄘ':'h','ㄨ':'j','ㄜ':'k','ㄠ':'l','ㄤ':';',
-  'ㄈ':'z','ㄌ':'x','ㄏ':'c','ㄒ':'v','ㄖ':'b','ㄙ':'n','ㄩ':'m','ㄝ':',','ㄡ':'.','ㄥ':'/',
-  'ㄦ':'-'
-};
-function fixZhuyin(s){
-  // 若字串含注音符號，逐字轉回；否則原樣返回
-  if(!/[ㄅ-ㄩˊˇˋ˙]/.test(s)) return s;
-  let out='';
-  for(const ch of s){ out += (ZHUYIN_MAP[ch]!==undefined ? ZHUYIN_MAP[ch] : ch); }
-  return out;
+/* 清理掃描結果：去除空白與換行。
+   （不做注音轉換，避免誤傷數字；請將掃描槍/鍵盤設為英數狀態） */
+function cleanCode(s){
+  return s.replace(/\s+/g,'').trim();
 }
 
 // 掃描槍掃完通常會送 Enter；沒有 Enter 的槍就靠字元間隔判斷
@@ -139,7 +128,7 @@ let bufTimer=null;
 scanIn.addEventListener('keydown', e=>{
   if(e.key==='Enter'){
     e.preventDefault();
-    const code=fixZhuyin(scanIn.value).trim();
+    const code=cleanCode(scanIn.value);
     scanIn.value='';
     if(code) onScan(code);
   }
@@ -147,16 +136,16 @@ scanIn.addEventListener('keydown', e=>{
 scanIn.addEventListener('input', ()=>{
   clearTimeout(bufTimer);
   bufTimer=setTimeout(()=>{
-    const code=fixZhuyin(scanIn.value).trim();
+    const code=cleanCode(scanIn.value);
     if(code.length>=4){ scanIn.value=''; onScan(code); }
-  },120);
+  },150);
 });
 
 function onScan(text){
   if(busy) return;
   busy=true;
   navigator.vibrate&&navigator.vibrate(60);
-  cur={ b:'', c:'', d:text.trim(), e:1, f:'', g:'' };
+  cur={ b:'', c:'', d:cleanCode(text), e:1, f:'', g:'' };
   step=0; renderStep();
 }
 
@@ -259,23 +248,22 @@ function nextStep(){
 /* ====== 送出 ====== */
 function submit(){
   body.innerHTML=`<div class="step">寫入中…</div><h2>請稍候</h2>`;
+  // Apps Script 會轉址到 googleusercontent.com，一般 fetch 會被 CORS 擋。
+  // 用 no-cors 送出：瀏覽器照樣把資料送達後端，只是前端讀不到回應內容。
   fetch(API_URL, {
     method:'POST',
+    mode:'no-cors',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify({ action:'append', ...cur })
   })
-  .then(r=>r.json())
-  .then(res=>{
-    if(res&&res.ok){
-      document.getElementById('lastLine').textContent=
-        cur.b+'　'+cur.c+'　'+cur.d+'　'+cur.e+'件　'+(cur.g||'-')+'kg';
-      toast('✓ 已寫入第 '+res.row+' 列');
-      if(typeof res.count==='number')
-        document.getElementById('count').textContent='今日 '+res.count+' 筆';
-    } else {
-      toast('寫入失敗：'+((res&&res.error)||'未知'));
-    }
+  .then(()=>{
+    // no-cors 讀不到回應，視為送出成功
+    document.getElementById('lastLine').textContent=
+      cur.b+'　'+cur.c+'　'+cur.d+'　'+cur.e+'件　'+(cur.g||'-')+'kg';
+    toast('✓ 已送出寫入');
     resetToScan();
+    // 稍後重新查詢筆數以確認（GET 可正常跨域）
+    setTimeout(refreshCount,1200);
   })
   .catch(err=>{ toast('連線失敗：'+err); resetToScan(); });
 }
@@ -317,10 +305,12 @@ function toast(msg){
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200);
 }
 function refreshCount(){
-  fetch(API_URL).then(r=>r.json()).then(res=>{
-    if(res&&res.ok&&typeof res.count==='number')
-      document.getElementById('count').textContent='今日 '+res.count+' 筆';
-  }).catch(()=>{});
+  fetch(API_URL, { redirect:'follow' })
+    .then(r=>r.json())
+    .then(res=>{
+      if(res&&res.ok&&typeof res.count==='number')
+        document.getElementById('count').textContent='今日 '+res.count+' 筆';
+    }).catch(()=>{ /* 筆數只是輔助顯示，讀不到就略過 */ });
 }
 
 // 點畫面任何地方都重新聚焦掃描框（避免焦點跑掉掃不進）
