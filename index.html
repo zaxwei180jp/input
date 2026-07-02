@@ -122,8 +122,11 @@
 /* ★ C 磚塊選單名單 */
 const C_OPTIONS = ['西濃','佐川','郵局','黑貓','AMAZON','ASKUL LOGIST','ファイズEC宅配','久留米運送','福山通運','T.M.G','BIC CAMERA','五大物產','名鉄','ECO','浪速','トナミ運輸','無印良品','第一貨物','JPロジスティクス','FedEx','DHL'];
 
-/* ★ B 客戶編號常用磚塊 */
-const B_OPTIONS = ['Q-1','C-127','C-131','D-12','D-13','ED-1','G-1','H-86','H-24','K-3','M-2','PH-101','T-17','T-23','T-33','T-6','TIF','Y-32','Y-29'];
+/* ★ B 客戶編號常用磚塊（Q-1 置頂，其餘依字母數字排序） */
+const B_OPTIONS = ['Q-1','C-44','C-127','C-131','D-12','D-13','ED-1','G-1','H-24','H-70','H-86','K-3','M-2','PH-101','SL-2','T-6','T-17','T-23','T-33','TIF','W-35','Y-29','Y-32','Z-7'];
+
+/* ★ F 備註常用磚塊 */
+const F_OPTIONS = ['MH-86','RS-104','BW-24','TIF','客','RS-68'];
 
 const STORE_KEY = 'w82_scan_records';
 
@@ -247,7 +250,7 @@ function onScan(text){
   if(busy) return;
   busy=true;
   navigator.vibrate&&navigator.vibrate(60);
-  cur={ b:'', bManual:'', c:'', d:cleanCode(text), e:1, f:'', g:'' };
+  cur={ b:'', bManual:'', c:'', d:cleanCode(text), e:1, f:'', fManual:'', g:'' };
   step=0; renderStep();
 }
 
@@ -297,12 +300,17 @@ function pickB(el,val){
   const f=document.getElementById('fld'); if(f) f.value='';
 }
 
-/* F 備註：不自動彈鍵盤，預設空白，要填才點 */
+/* F 備註：常用磚塊 + 底部手動輸入，不自動彈鍵盤，可留空 */
 function renderNote(stepLabel){
+  const tiles=F_OPTIONS.map(o=>
+    `<div class="tile ${cur.f===o?'sel':''}" onclick="pickF(this,'${o.replace(/'/g,"\\'")}')">${o}</div>`
+  ).join('');
   body.innerHTML=`
     <div class="step">${stepLabel}</div>
     <h2>備註（可留空）</h2>
-    <input class="fld upper" id="fld" inputmode="text" autocapitalize="characters" placeholder="免填，需要才點這裡輸入" value="${cur.f||''}">
+    <div class="tiles">${tiles}</div>
+    <div style="font-size:13px;color:var(--sub);margin:14px 0 6px;">或手動輸入（自動大寫）</div>
+    <input class="fld upper" id="fld" inputmode="text" autocapitalize="characters" placeholder="免填，需要才點這裡輸入" value="${cur.fManual||''}">
     <div class="row">
       <button class="btn ghost" onclick="cancelAll()">取消</button>
       <button class="btn" onclick="nextStep()">下一步</button>
@@ -310,7 +318,18 @@ function renderNote(stepLabel){
   const f=document.getElementById('fld');
   // 不自動 focus（避免彈鍵盤），要填才由使用者點擊
   f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
+  f.oninput=()=>{ // 手動打字時清掉磚塊選取
+    document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
+    cur.f=''; cur.fManual=f.value;
+  };
   f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
+}
+function pickF(el,val){
+  const wasSel=el.classList.contains('sel');
+  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
+  const fld=document.getElementById('fld');
+  if(wasSel){ cur.f=''; }         // 再點一次可取消
+  else { el.classList.add('sel'); cur.f=val; cur.fManual=''; if(fld) fld.value=''; }
 }
 
 function renderInput(title,mode,stepLabel,upper,isLast){
@@ -318,14 +337,15 @@ function renderInput(title,mode,stepLabel,upper,isLast){
     <div class="step">${stepLabel}</div>
     <h2>${title}</h2>
     <input class="fld ${upper?'upper':''}" id="fld" inputmode="${mode==='decimal'?'decimal':'text'}"
-      ${mode==='decimal'?'':'autocapitalize="characters"'} placeholder="點這裡輸入" value="${cur[STEPS[step]]||''}">
-    <div style="font-size:12px;color:var(--sub);margin-top:8px;">鍵盤沒跳出？連按兩下掃描槍扳機即可叫出鍵盤</div>
+      ${mode==='decimal'?'':'autocapitalize="characters"'} placeholder="${mode==='decimal'?'輸入重量（可小數）':'點這裡輸入'}" value="${cur[STEPS[step]]||''}">
+    <div style="font-size:12px;color:var(--sub);margin-top:8px;">鍵盤沒跳出？點一下上方輸入框</div>
     <div class="row">
       <button class="btn ghost" onclick="cancelAll()">取消</button>
       <button class="btn" onclick="nextStep()">${isLast?'儲存這筆':'下一步'}</button>
     </div>`;
   const f=document.getElementById('fld');
-  setTimeout(()=>{ try{ f.focus({preventScroll:true}); }catch(e){} },150);
+  // 自動聚焦叫出鍵盤（重量為數字鍵盤）
+  setTimeout(()=>{ try{ f.focus({preventScroll:true}); f.click(); }catch(e){} },200);
   f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
   f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
 }
@@ -381,7 +401,9 @@ function nextStep(){
   } else if(key==='e'){
     cur.e=parseInt(document.getElementById('qty').value)||1;
   } else if(key==='f'){
-    cur.f=document.getElementById('fld').value.trim().toUpperCase();
+    const f=document.getElementById('fld');
+    const manual=f?f.value.trim().toUpperCase():'';
+    cur.f = cur.f || manual;  // 磚塊優先，否則手動；都沒有就留空
   } else if(key==='g'){
     const raw=document.getElementById('fld').value.trim();
     cur.g = raw===''?'':raw;
@@ -413,7 +435,7 @@ function cancelAll(){ resetToScan(); }
 document.getElementById('btnManual').onclick=()=>{
   if(busy) return;
   busy=true;
-  cur={ b:'', bManual:'', c:'', d:'', e:1, f:'', g:'' };
+  cur={ b:'', bManual:'', c:'', d:'', e:1, f:'', fManual:'', g:'' };
   openModal();
   body.innerHTML=`
     <div class="step">手動輸入單號（D）</div>
