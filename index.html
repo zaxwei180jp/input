@@ -122,6 +122,9 @@
 /* ★ C 磚塊選單名單 */
 const C_OPTIONS = ['西濃','佐川','郵局','黑貓','AMAZON','ASKUL LOGIST','ファイズEC宅配','久留米運送','福山通運','T.M.G','BIC CAMERA','五大物產','名鉄','ECO','浪速','トナミ運輸','無印良品','第一貨物','JPロジスティクス','FedEx','DHL'];
 
+/* ★ B 客戶編號常用磚塊 */
+const B_OPTIONS = ['Q-1','C-127','C-131','D-12','D-13','ED-1','G-1','H-86','H-24','K-3','M-2','PH-101','T-17','T-23','T-33','T-6','TIF','Y-32','Y-29'];
+
 const STORE_KEY = 'w82_scan_records';
 
 let busy=false;
@@ -223,24 +226,28 @@ let bufTimer=null;
 scanIn.addEventListener('keydown', e=>{
   if(e.key==='Enter'){
     e.preventDefault();
+    clearTimeout(bufTimer);
     const code=cleanCode(scanIn.value);
     scanIn.value='';
     if(code) onScan(code);
   }
 });
 scanIn.addEventListener('input', ()=>{
+  // 已在流程中就不再接收（避免掃碼殘字跑進欄位）
+  if(busy){ scanIn.value=''; return; }
   clearTimeout(bufTimer);
+  // 緩衝拉長到 500ms：掃碼器讀慢時不會被中途切斷
   bufTimer=setTimeout(()=>{
     const code=cleanCode(scanIn.value);
     if(code.length>=4){ scanIn.value=''; onScan(code); }
-  },150);
+  },500);
 });
 
 function onScan(text){
   if(busy) return;
   busy=true;
   navigator.vibrate&&navigator.vibrate(60);
-  cur={ b:'', c:'', d:cleanCode(text), e:1, f:'', g:'' };
+  cur={ b:'', bManual:'', c:'', d:cleanCode(text), e:1, f:'', g:'' };
   step=0; renderStep();
 }
 
@@ -254,11 +261,56 @@ function renderStep(){
   openModal();
   const key=STEPS[step];
   const stepLabel='步驟 '+(step+1)+' / 5　單號 '+cur.d;
-  if(key==='b') renderInput('客戶編號','text',stepLabel,true,false);
+  if(key==='b') renderBTiles(stepLabel);
   else if(key==='c') renderTiles(stepLabel);
   else if(key==='e') renderQty(stepLabel);
-  else if(key==='f') renderInput('備註（可留空）','text',stepLabel,false,false);
+  else if(key==='f') renderNote(stepLabel);
   else if(key==='g') renderInput('重量','decimal',stepLabel,false,true);
+}
+
+/* B 客編：常用磚塊 + 底部手動輸入 */
+function renderBTiles(stepLabel){
+  const tiles=B_OPTIONS.map(o=>
+    `<div class="tile ${cur.b===o?'sel':''}" onclick="pickB(this,'${o.replace(/'/g,"\\'")}')">${o}</div>`
+  ).join('');
+  body.innerHTML=`
+    <div class="step">${stepLabel}</div>
+    <h2>客戶編號</h2>
+    <div class="tiles">${tiles}</div>
+    <div style="font-size:13px;color:var(--sub);margin:14px 0 6px;">或手動輸入（自動大寫）</div>
+    <input class="fld upper" id="fld" inputmode="text" autocapitalize="characters" placeholder="點這裡輸入" value="${cur.bManual||''}">
+    <div class="row">
+      <button class="btn ghost" onclick="cancelAll()">取消</button>
+      <button class="btn" onclick="nextStep()">下一步</button>
+    </div>`;
+  const f=document.getElementById('fld');
+  f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
+  f.oninput=()=>{ // 手動打字時清掉磚塊選取
+    document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
+    cur.b=''; cur.bManual=f.value;
+  };
+  f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
+}
+function pickB(el,val){
+  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
+  el.classList.add('sel'); cur.b=val; cur.bManual='';
+  const f=document.getElementById('fld'); if(f) f.value='';
+}
+
+/* F 備註：不自動彈鍵盤，預設空白，要填才點 */
+function renderNote(stepLabel){
+  body.innerHTML=`
+    <div class="step">${stepLabel}</div>
+    <h2>備註（可留空）</h2>
+    <input class="fld upper" id="fld" inputmode="text" autocapitalize="characters" placeholder="免填，需要才點這裡輸入" value="${cur.f||''}">
+    <div class="row">
+      <button class="btn ghost" onclick="cancelAll()">取消</button>
+      <button class="btn" onclick="nextStep()">下一步</button>
+    </div>`;
+  const f=document.getElementById('fld');
+  // 不自動 focus（避免彈鍵盤），要填才由使用者點擊
+  f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
+  f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
 }
 
 function renderInput(title,mode,stepLabel,upper,isLast){
@@ -318,15 +370,18 @@ function chQty(d){
 function nextStep(){
   const key=STEPS[step];
   if(key==='b'){
-    const v=document.getElementById('fld').value.trim().toUpperCase();
-    if(!v){ toast('請輸入客戶編號'); return; }
+    // 磚塊已選就用 cur.b；否則用手動輸入框
+    const f=document.getElementById('fld');
+    const manual=f?f.value.trim().toUpperCase():'';
+    const v = cur.b || manual;
+    if(!v){ toast('請選擇或輸入客戶編號'); return; }
     cur.b=v;
   } else if(key==='c'){
     if(!cur.c){ toast('請選擇物流'); return; }
   } else if(key==='e'){
     cur.e=parseInt(document.getElementById('qty').value)||1;
   } else if(key==='f'){
-    cur.f=document.getElementById('fld').value.trim();
+    cur.f=document.getElementById('fld').value.trim().toUpperCase();
   } else if(key==='g'){
     const raw=document.getElementById('fld').value.trim();
     cur.g = raw===''?'':raw;
@@ -358,7 +413,7 @@ function cancelAll(){ resetToScan(); }
 document.getElementById('btnManual').onclick=()=>{
   if(busy) return;
   busy=true;
-  cur={ b:'', c:'', d:'', e:1, f:'', g:'' };
+  cur={ b:'', bManual:'', c:'', d:'', e:1, f:'', g:'' };
   openModal();
   body.innerHTML=`
     <div class="step">手動輸入單號（D）</div>
