@@ -102,8 +102,9 @@
 
   <!-- 複製 / 匯出 -->
   <div class="row">
-    <button class="btn" id="btnCopy">📋 複製全部（貼到 Sheet）</button>
+    <button class="btn" id="btnCopy">📋 複製全部（備用）</button>
   </div>
+  <div id="syncStatus" style="font-size:13px;color:var(--sub);text-align:center;margin-top:8px;"></div>
 
   <div class="listhead">
     <span class="t">已掃記錄</span>
@@ -156,11 +157,57 @@ function delRecord(id){
   renderList();
 }
 function clearAll(){
-  if(!confirm('確定清空所有記錄？建議先「複製全部」貼到 Sheet 再清空。')) return;
+  const arr=loadRecords();
+  const unsynced=arr.filter(r=>!r.synced).length;
+  const msg = unsynced>0
+    ? '注意：還有 '+unsynced+' 筆尚未同步到 Sheet！確定要清空全部？'
+    : '確定清空所有記錄？（已全部同步到 Sheet）';
+  if(!confirm(msg)) return;
   saveRecords([]);
   renderList();
   toast('已清空');
 }
+
+/* ====== 背景同步到 Google Sheet ====== */
+let syncing=false;
+function syncNow(){
+  if(syncing) return;
+  const arr=loadRecords();
+  const pending=arr.filter(r=>!r.synced);
+  if(pending.length===0) return;
+  syncing=true;
+  setSyncStatus('同步中…');
+
+  fetch('/api/sheet', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ records: pending })
+  })
+  .then(r=>r.json())
+  .then(res=>{
+    if(res && res.ok){
+      // 標記已同步
+      const ids=new Set(pending.map(r=>r.id));
+      const updated=loadRecords().map(r=> ids.has(r.id) ? {...r, synced:true} : r);
+      saveRecords(updated);
+      renderList();
+      setSyncStatus('');
+      toast('✓ 已同步 '+res.written+' 筆到 Sheet');
+    } else {
+      setSyncStatus('同步失敗，稍後自動重試');
+    }
+  })
+  .catch(()=>{ setSyncStatus('離線，稍後自動重試'); })
+  .finally(()=>{ syncing=false; });
+}
+function setSyncStatus(msg){
+  const el=document.getElementById('syncStatus');
+  if(el) el.textContent=msg;
+}
+/* 每 30 秒自動重試未同步的 */
+setInterval(syncNow, 30000);
+/* 網路恢復時立即同步 */
+window.addEventListener('online', syncNow);
 
 /* 今天日期 YYYY/MM/DD */
 function todayStr(){
@@ -172,14 +219,16 @@ function todayStr(){
 /* ====== 列表顯示 ====== */
 function renderList(){
   const arr=loadRecords();
-  document.getElementById('count').textContent='共 '+arr.length+' 筆';
+  const unsynced=arr.filter(r=>!r.synced).length;
+  document.getElementById('count').textContent=
+    '共 '+arr.length+' 筆'+(unsynced>0?'（'+unsynced+' 待同步）':'');
   const box=document.getElementById('list');
   if(arr.length===0){ box.innerHTML='<div class="empty">尚無記錄。掃描後會顯示在這裡。</div>'; return; }
   // 最新的在最上面
   box.innerHTML = arr.slice().reverse().map(r=>`
     <div class="rec">
       <div class="top">
-        <span class="d">${esc(r.d)}</span>
+        <span class="d">${r.synced?'✅':'⏳'} ${esc(r.d)}</span>
         <button class="del" onclick="delRecord('${r.id}')">刪除</button>
       </div>
       <div class="meta">${esc(r.b)}｜${esc(r.c)}｜${r.e}件｜${r.g===''?'-':r.g}kg${r.f?'｜'+esc(r.f):''}</div>
@@ -421,11 +470,13 @@ function saveThis(){
   const rec={
     id: 'r'+Date.now()+Math.floor(Math.random()*1000),
     date: todayStr(),
-    b: cur.b, c: cur.c, d: cur.d, e: cur.e, f: cur.f, g: cur.g
+    b: cur.b, c: cur.c, d: cur.d, e: cur.e, f: cur.f, g: cur.g,
+    synced: false
   };
   addRecord(rec);
   toast('✓ 已儲存（共 '+loadRecords().length+' 筆）');
   resetToScan();
+  syncNow();  // 立即背景同步到 Sheet
 }
 
 function resetToScan(){
@@ -471,7 +522,7 @@ function toast(msg){
 
 document.addEventListener('click', ()=>{ if(!busy && !modal.classList.contains('show')) focusScan(); });
 
-window.addEventListener('load',()=>{ focusScan(); renderList(); });
+window.addEventListener('load',()=>{ focusScan(); renderList(); syncNow(); });
 </script>
 </body>
 </html>
