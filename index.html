@@ -248,24 +248,29 @@ function nextStep(){
 /* ====== 送出 ====== */
 function submit(){
   body.innerHTML=`<div class="step">寫入中…</div><h2>請稍候</h2>`;
-  // Apps Script 會轉址到 googleusercontent.com，一般 fetch 會被 CORS 擋。
-  // 用 no-cors 送出：瀏覽器照樣把資料送達後端，只是前端讀不到回應內容。
-  fetch(API_URL, {
-    method:'POST',
-    mode:'no-cors',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ action:'append', ...cur })
-  })
-  .then(()=>{
-    // no-cors 讀不到回應，視為送出成功
-    document.getElementById('lastLine').textContent=
-      cur.b+'　'+cur.c+'　'+cur.d+'　'+cur.e+'件　'+(cur.g||'-')+'kg';
-    toast('✓ 已送出寫入');
-    resetToScan();
-    // 稍後重新查詢筆數以確認（GET 可正常跨域）
-    setTimeout(refreshCount,1200);
-  })
-  .catch(err=>{ toast('連線失敗：'+err); resetToScan(); });
+  // GET 已證實可通（POST+no-cors 在 iOS 會被靜默丟棄）。
+  // 把資料放到網址參數，走 GET 讓後端 doGet 寫入。
+  const params = new URLSearchParams({
+    action:'append',
+    b:cur.b, c:cur.c, d:cur.d, e:cur.e, f:cur.f, g:cur.g
+  });
+  const url = API_URL + '?' + params.toString();
+
+  fetch(url, { method:'GET', redirect:'follow' })
+    .then(r=>r.json())
+    .then(res=>{
+      if(res&&res.ok){
+        document.getElementById('lastLine').textContent=
+          cur.b+'　'+cur.c+'　'+cur.d+'　'+cur.e+'件　'+(cur.g||'-')+'kg';
+        toast('✓ 已寫入第 '+res.row+' 列');
+        if(typeof res.count==='number')
+          document.getElementById('count').textContent='今日 '+res.count+' 筆';
+      } else {
+        toast('寫入失敗：'+((res&&res.error)||'未知'));
+      }
+      resetToScan();
+    })
+    .catch(err=>{ toast('連線失敗：'+err); resetToScan(); });
 }
 
 function resetToScan(){
