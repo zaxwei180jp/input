@@ -271,10 +271,16 @@ function renderStep(){
   else if(key==='g') renderInput('重量','decimal',stepLabel,false,true);
 }
 
+/* 上一步：回到前一個欄位；在第一步則取消整筆 */
+function prevStep(){
+  if(step<=0){ cancelAll(); return; }
+  step--; renderStep();
+}
+
 /* B 客編：常用磚塊 + 底部手動輸入 */
 function renderBTiles(stepLabel){
   const tiles=B_OPTIONS.map(o=>
-    `<div class="tile ${cur.b===o?'sel':''}" onclick="pickB(this,'${o.replace(/'/g,"\\'")}')">${o}</div>`
+    `<div class="tile ${cur.b===o?'sel':''}" onclick="pickB('${o.replace(/'/g,"\\'")}')">${o}</div>`
   ).join('');
   body.innerHTML=`
     <div class="step">${stepLabel}</div>
@@ -283,27 +289,27 @@ function renderBTiles(stepLabel){
     <div style="font-size:13px;color:var(--sub);margin:14px 0 6px;">或手動輸入（自動大寫）</div>
     <input class="fld upper" id="fld" inputmode="text" autocapitalize="characters" placeholder="點這裡輸入" value="${cur.bManual||''}">
     <div class="row">
-      <button class="btn ghost" onclick="cancelAll()">取消</button>
+      <button class="btn ghost" onclick="prevStep()">上一步</button>
       <button class="btn" onclick="nextStep()">下一步</button>
     </div>`;
   const f=document.getElementById('fld');
   f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
-  f.oninput=()=>{ // 手動打字時清掉磚塊選取
+  f.oninput=()=>{
     document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
     cur.b=''; cur.bManual=f.value;
   };
   f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
 }
-function pickB(el,val){
-  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
-  el.classList.add('sel'); cur.b=val; cur.bManual='';
-  const f=document.getElementById('fld'); if(f) f.value='';
+/* 點磚塊直接進下一步 */
+function pickB(val){
+  cur.b=val; cur.bManual='';
+  step++; renderStep();
 }
 
 /* F 備註：常用磚塊 + 底部手動輸入，不自動彈鍵盤，可留空 */
 function renderNote(stepLabel){
   const tiles=F_OPTIONS.map(o=>
-    `<div class="tile ${cur.f===o?'sel':''}" onclick="pickF(this,'${o.replace(/'/g,"\\'")}')">${o}</div>`
+    `<div class="tile ${cur.f===o?'sel':''}" onclick="pickF('${o.replace(/'/g,"\\'")}')">${o}</div>`
   ).join('');
   body.innerHTML=`
     <div class="step">${stepLabel}</div>
@@ -312,24 +318,21 @@ function renderNote(stepLabel){
     <div style="font-size:13px;color:var(--sub);margin:14px 0 6px;">或手動輸入（自動大寫）</div>
     <input class="fld upper" id="fld" inputmode="text" autocapitalize="characters" placeholder="免填，需要才點這裡輸入" value="${cur.fManual||''}">
     <div class="row">
-      <button class="btn ghost" onclick="cancelAll()">取消</button>
-      <button class="btn" onclick="nextStep()">下一步</button>
+      <button class="btn ghost" onclick="prevStep()">上一步</button>
+      <button class="btn" onclick="nextStep()">下一步（免填直接按）</button>
     </div>`;
   const f=document.getElementById('fld');
-  // 不自動 focus（避免彈鍵盤），要填才由使用者點擊
   f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
-  f.oninput=()=>{ // 手動打字時清掉磚塊選取
+  f.oninput=()=>{
     document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
     cur.f=''; cur.fManual=f.value;
   };
   f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
 }
-function pickF(el,val){
-  const wasSel=el.classList.contains('sel');
-  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
-  const fld=document.getElementById('fld');
-  if(wasSel){ cur.f=''; }         // 再點一次可取消
-  else { el.classList.add('sel'); cur.f=val; cur.fManual=''; if(fld) fld.value=''; }
+/* 點磚塊直接進下一步 */
+function pickF(val){
+  cur.f=val; cur.fManual='';
+  step++; renderStep();
 }
 
 function renderInput(title,mode,stepLabel,upper,isLast){
@@ -338,13 +341,13 @@ function renderInput(title,mode,stepLabel,upper,isLast){
     <h2>${title}</h2>
     <input class="fld ${upper?'upper':''}" id="fld" inputmode="${mode==='decimal'?'decimal':'text'}"
       ${mode==='decimal'?'':'autocapitalize="characters"'} placeholder="${mode==='decimal'?'輸入重量（可小數）':'點這裡輸入'}" value="${cur[STEPS[step]]||''}">
-    <div style="font-size:12px;color:var(--sub);margin-top:8px;">鍵盤沒跳出？點一下上方輸入框</div>
+    <button class="btn ghost" style="margin-top:10px;" onclick="document.getElementById('fld').focus();document.getElementById('fld').click();">⌨️ 叫出數字鍵盤</button>
     <div class="row">
-      <button class="btn ghost" onclick="cancelAll()">取消</button>
+      <button class="btn ghost" onclick="prevStep()">上一步</button>
       <button class="btn" onclick="nextStep()">${isLast?'儲存這筆':'下一步'}</button>
     </div>`;
   const f=document.getElementById('fld');
-  // 自動聚焦叫出鍵盤（重量為數字鍵盤）
+  // 嘗試自動聚焦叫出鍵盤（掃描器連著時 iOS 可能不彈，用上面的按鈕手動叫出）
   setTimeout(()=>{ try{ f.focus({preventScroll:true}); f.click(); }catch(e){} },200);
   f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
   f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
@@ -352,20 +355,21 @@ function renderInput(title,mode,stepLabel,upper,isLast){
 
 function renderTiles(stepLabel){
   const tiles=C_OPTIONS.map(o=>
-    `<div class="tile ${cur.c===o?'sel':''}" onclick="pickC(this,'${o.replace(/'/g,"\\'")}')">${o}</div>`
+    `<div class="tile ${cur.c===o?'sel':''}" onclick="pickC('${o.replace(/'/g,"\\'")}')">${o}</div>`
   ).join('');
   body.innerHTML=`
     <div class="step">${stepLabel}</div>
     <h2>日本境內物流</h2>
     <div class="tiles">${tiles}</div>
     <div class="row">
-      <button class="btn ghost" onclick="cancelAll()">取消</button>
+      <button class="btn ghost" onclick="prevStep()">上一步</button>
       <button class="btn" onclick="nextStep()">下一步</button>
     </div>`;
 }
-function pickC(el,val){
-  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
-  el.classList.add('sel'); cur.c=val;
+/* 點磚塊直接進下一步 */
+function pickC(val){
+  cur.c=val;
+  step++; renderStep();
 }
 
 function renderQty(stepLabel){
@@ -378,7 +382,7 @@ function renderQty(stepLabel){
       <button onclick="chQty(1)">＋</button>
     </div>
     <div class="row">
-      <button class="btn ghost" onclick="cancelAll()">取消</button>
+      <button class="btn ghost" onclick="prevStep()">上一步</button>
       <button class="btn" onclick="nextStep()">下一步</button>
     </div>`;
 }
