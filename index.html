@@ -26,7 +26,6 @@
   .scanbox .sub{font-size:13px;color:var(--sub);}
   #scanIn{position:absolute;opacity:0;pointer-events:none;left:-9999px;}
   .waiting{margin-top:14px;font-size:15px;color:var(--accent);font-weight:600;}
-  .waiting.off{color:var(--danger);}
 
   .lastbox{background:var(--card);border:1px solid var(--line);border-radius:14px;
     padding:14px;margin-top:14px;}
@@ -36,8 +35,21 @@
     width:100%;color:#fff;background:var(--accent);cursor:pointer;}
   .btn:active{opacity:.85;}
   .btn.ghost{background:#fff;color:var(--txt);border:1px solid var(--line);}
+  .btn.danger{background:var(--danger);}
   .row{display:flex;gap:10px;margin-top:14px;}
   .row .btn{flex:1;}
+
+  /* 記錄列表 */
+  .listhead{display:flex;justify-content:space-between;align-items:center;margin:20px 0 8px;}
+  .listhead .t{font-size:15px;font-weight:700;}
+  .listhead .clear{font-size:13px;color:var(--danger);background:none;border:none;}
+  .rec{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;margin-bottom:8px;font-size:14px;}
+  .rec .top{display:flex;justify-content:space-between;gap:8px;}
+  .rec .d{font-weight:700;word-break:break-all;}
+  .rec .del{color:var(--danger);background:none;border:none;font-size:13px;flex:0 0 auto;}
+  .rec .meta{color:var(--sub);font-size:13px;margin-top:4px;word-break:break-all;}
+  .empty{color:var(--sub);font-size:14px;text-align:center;padding:20px 0;}
 
   .modal{position:fixed;inset:0;background:rgba(30,34,28,.55);display:none;
     align-items:flex-end;justify-content:center;z-index:20;}
@@ -72,11 +84,10 @@
 <body>
 <header>
   <h1>W-82 掃描登錄</h1>
-  <span id="count">今日 0 筆</span>
+  <span id="count">共 0 筆</span>
 </header>
 
 <div class="wrap">
-  <!-- 掃描待命框：點一下確保聚焦，掃描槍一掃就進來 -->
   <div class="scanbox" id="scanbox" onclick="focusScan()">
     <div class="icon">📷</div>
     <div class="title">掃描待命中</div>
@@ -85,14 +96,20 @@
     <input id="scanIn" autocomplete="off" autocapitalize="off" autocorrect="off">
   </div>
 
-  <div class="lastbox">
-    <div class="t">上一筆</div>
-    <div class="v" id="lastLine">尚無</div>
-  </div>
-
   <div class="row">
     <button class="btn ghost" id="btnManual">手動輸入單號</button>
   </div>
+
+  <!-- 複製 / 匯出 -->
+  <div class="row">
+    <button class="btn" id="btnCopy">📋 複製全部（貼到 Sheet）</button>
+  </div>
+
+  <div class="listhead">
+    <span class="t">已掃記錄</span>
+    <button class="clear" id="btnClear">清空全部</button>
+  </div>
+  <div id="list"></div>
 </div>
 
 <div class="modal" id="modal">
@@ -102,28 +119,106 @@
 <div class="toast" id="toast"></div>
 
 <script>
-/* ★ Apps Script /exec 網址 */
-const API_URL = 'https://script.google.com/macros/s/AKfycbzDNCYRafj-7Qe1RnRpe0FOUhVs4vGEVhOv9MuXccIX888dJIW_ICRbYJwcuf1hGww/exec';
-
 /* ★ C 磚塊選單名單 */
 const C_OPTIONS = ['西濃','佐川','郵局','黑貓','AMAZON','ASKUL LOGIST','ファイズEC宅配','久留米運送','福山通運','T.M.G','BIC CAMERA','五大物產','名鉄','ECO','浪速','トナミ運輸','無印良品','第一貨物','JPロジスティクス','FedEx','DHL'];
+
+const STORE_KEY = 'w82_scan_records';
 
 let busy=false;
 let cur={ b:'', c:'', d:'', e:1, f:'', g:'' };
 let step=0;
 const STEPS=['b','c','e','f','g'];
 
+/* ====== 本機儲存 ====== */
+function loadRecords(){
+  try{ return JSON.parse(localStorage.getItem(STORE_KEY)||'[]'); }
+  catch(e){ return []; }
+}
+function saveRecords(arr){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(arr)); }catch(e){ toast('儲存失敗：'+e); }
+}
+function addRecord(rec){
+  const arr=loadRecords();
+  arr.push(rec);
+  saveRecords(arr);
+  renderList();
+}
+function delRecord(id){
+  let arr=loadRecords();
+  arr=arr.filter(r=>r.id!==id);
+  saveRecords(arr);
+  renderList();
+}
+function clearAll(){
+  if(!confirm('確定清空所有記錄？建議先「複製全部」貼到 Sheet 再清空。')) return;
+  saveRecords([]);
+  renderList();
+  toast('已清空');
+}
+
+/* 今天日期 YYYY/MM/DD */
+function todayStr(){
+  const d=new Date();
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'/'+p(d.getMonth()+1)+'/'+p(d.getDate());
+}
+
+/* ====== 列表顯示 ====== */
+function renderList(){
+  const arr=loadRecords();
+  document.getElementById('count').textContent='共 '+arr.length+' 筆';
+  const box=document.getElementById('list');
+  if(arr.length===0){ box.innerHTML='<div class="empty">尚無記錄。掃描後會顯示在這裡。</div>'; return; }
+  // 最新的在最上面
+  box.innerHTML = arr.slice().reverse().map(r=>`
+    <div class="rec">
+      <div class="top">
+        <span class="d">${esc(r.d)}</span>
+        <button class="del" onclick="delRecord('${r.id}')">刪除</button>
+      </div>
+      <div class="meta">${esc(r.b)}｜${esc(r.c)}｜${r.e}件｜${r.g===''?'-':r.g}kg${r.f?'｜'+esc(r.f):''}</div>
+    </div>`).join('');
+}
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ====== 複製全部（TSV，貼到 Sheet 自動分欄）====== */
+function copyAll(){
+  const arr=loadRecords();
+  if(arr.length===0){ toast('沒有記錄可複製'); return; }
+  // 欄位順序：A日期 B客編 C物流 D單號 E件數 F備註 G重量 H出貨(空)
+  const lines = arr.map(r=>[r.date, r.b, r.c, r.d, r.e, r.f, r.g, ''].join('\t'));
+  const tsv = lines.join('\n');
+
+  // 優先用 Clipboard API，失敗則用備援
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(tsv)
+      .then(()=>toast('✓ 已複製 '+arr.length+' 筆，去 Sheet 貼上'))
+      .catch(()=>fallbackCopy(tsv, arr.length));
+  } else {
+    fallbackCopy(tsv, arr.length);
+  }
+}
+function fallbackCopy(text, n){
+  const ta=document.createElement('textarea');
+  ta.value=text; ta.style.position='fixed'; ta.style.left='-9999px';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try{ document.execCommand('copy'); toast('✓ 已複製 '+n+' 筆，去 Sheet 貼上'); }
+  catch(e){ toast('複製失敗，請長按下方文字手動複製'); showManualCopy(text); }
+  document.body.removeChild(ta);
+}
+function showManualCopy(text){
+  openModal();
+  body.innerHTML=`<div class="step">自動複製失敗，請長按全選複製</div>
+    <h2>手動複製</h2>
+    <textarea class="fld" style="height:200px" readonly>${esc(text)}</textarea>
+    <div class="row"><button class="btn" onclick="cancelAll()">關閉</button></div>`;
+}
+
 /* ====== 掃描槍輸入 ====== */
 const scanIn=document.getElementById('scanIn');
 function focusScan(){ if(!busy){ scanIn.focus({preventScroll:true}); } }
+function cleanCode(s){ return s.replace(/\s+/g,'').trim(); }
 
-/* 清理掃描結果：去除空白與換行。
-   （不做注音轉換，避免誤傷數字；請將掃描槍/鍵盤設為英數狀態） */
-function cleanCode(s){
-  return s.replace(/\s+/g,'').trim();
-}
-
-// 掃描槍掃完通常會送 Enter；沒有 Enter 的槍就靠字元間隔判斷
 let bufTimer=null;
 scanIn.addEventListener('keydown', e=>{
   if(e.key==='Enter'){
@@ -152,11 +247,7 @@ function onScan(text){
 /* ====== 依序彈窗 ====== */
 const modal=document.getElementById('modal');
 const body=document.getElementById('sheetBody');
-function openModal(){
-  // 放開掃描框焦點，否則 iOS 以為實體鍵盤在用、不彈螢幕鍵盤
-  scanIn.blur();
-  modal.classList.add('show');
-}
+function openModal(){ scanIn.blur(); modal.classList.add('show'); }
 function closeModal(){ modal.classList.remove('show'); }
 
 function renderStep(){
@@ -179,10 +270,9 @@ function renderInput(title,mode,stepLabel,upper,isLast){
     <div style="font-size:12px;color:var(--sub);margin-top:8px;">鍵盤沒跳出？連按兩下掃描槍扳機即可叫出鍵盤</div>
     <div class="row">
       <button class="btn ghost" onclick="cancelAll()">取消</button>
-      <button class="btn" onclick="nextStep()">${isLast?'送出寫入':'下一步'}</button>
+      <button class="btn" onclick="nextStep()">${isLast?'儲存這筆':'下一步'}</button>
     </div>`;
   const f=document.getElementById('fld');
-  // iOS 需要真實觸控才彈鍵盤，先嘗試自動聚焦，失敗就靠使用者點框
   setTimeout(()=>{ try{ f.focus({preventScroll:true}); }catch(e){} },150);
   f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
   f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
@@ -240,62 +330,21 @@ function nextStep(){
   } else if(key==='g'){
     const raw=document.getElementById('fld').value.trim();
     cur.g = raw===''?'':raw;
-    submit(); return;
+    saveThis(); return;
   }
   step++; renderStep();
 }
 
-/* ====== JSONP 呼叫（繞過 Apps Script 的 CORS 限制）====== */
-let jsonpSeq=0;
-function jsonpCall(paramsObj, onOk, onErr){
-  const cbName = 'w82cb_' + (++jsonpSeq) + '_' + Date.now();
-  const params = new URLSearchParams(paramsObj);
-  params.set('callback', cbName);
-  const url = API_URL + '?' + params.toString();
-
-  const script = document.createElement('script');
-  let done=false;
-  const timer = setTimeout(()=>{
-    if(done) return; done=true;
-    cleanup(); onErr && onErr('逾時，請檢查網路');
-  }, 15000);
-
-  window[cbName] = (res)=>{
-    if(done) return; done=true;
-    clearTimeout(timer); cleanup();
-    onOk && onOk(res);
+/* ====== 儲存這筆 ====== */
+function saveThis(){
+  const rec={
+    id: 'r'+Date.now()+Math.floor(Math.random()*1000),
+    date: todayStr(),
+    b: cur.b, c: cur.c, d: cur.d, e: cur.e, f: cur.f, g: cur.g
   };
-  function cleanup(){
-    try{ delete window[cbName]; }catch(e){ window[cbName]=undefined; }
-    if(script.parentNode) script.parentNode.removeChild(script);
-  }
-  script.onerror = ()=>{
-    if(done) return; done=true;
-    clearTimeout(timer); cleanup(); onErr && onErr('載入失敗');
-  };
-  script.src = url;
-  document.body.appendChild(script);
-}
-
-/* ====== 送出 ====== */
-function submit(){
-  body.innerHTML=`<div class="step">寫入中…</div><h2>請稍候</h2>`;
-  jsonpCall(
-    { action:'append', b:cur.b, c:cur.c, d:cur.d, e:cur.e, f:cur.f, g:cur.g },
-    (res)=>{
-      if(res&&res.ok){
-        document.getElementById('lastLine').textContent=
-          cur.b+'　'+cur.c+'　'+cur.d+'　'+cur.e+'件　'+(cur.g||'-')+'kg';
-        toast('✓ 已寫入第 '+res.row+' 列');
-        if(typeof res.count==='number')
-          document.getElementById('count').textContent='今日 '+res.count+' 筆';
-      } else {
-        toast('寫入失敗：'+((res&&res.error)||'未知'));
-      }
-      resetToScan();
-    },
-    (err)=>{ toast('連線失敗：'+err); resetToScan(); }
-  );
+  addRecord(rec);
+  toast('✓ 已儲存（共 '+loadRecords().length+' 筆）');
+  resetToScan();
 }
 
 function resetToScan(){
@@ -314,7 +363,7 @@ document.getElementById('btnManual').onclick=()=>{
   body.innerHTML=`
     <div class="step">手動輸入單號（D）</div>
     <h2>單號</h2>
-    <input class="fld" id="fld" inputmode="text">
+    <input class="fld" id="fld" inputmode="text" placeholder="點這裡輸入">
     <div class="row">
       <button class="btn ghost" onclick="cancelAll()">取消</button>
       <button class="btn" onclick="manualD()">下一步</button>
@@ -327,6 +376,10 @@ function manualD(){
   cur.d=v; step=0; renderStep();
 }
 
+/* ====== 按鈕綁定 ====== */
+document.getElementById('btnCopy').onclick=copyAll;
+document.getElementById('btnClear').onclick=clearAll;
+
 /* ====== 小工具 ====== */
 let toastT=null;
 function toast(msg){
@@ -334,17 +387,10 @@ function toast(msg){
   t.textContent=msg; t.classList.add('show');
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200);
 }
-function refreshCount(){
-  jsonpCall({ action:'count' }, (res)=>{
-    if(res&&res.ok&&typeof res.count==='number')
-      document.getElementById('count').textContent='今日 '+res.count+' 筆';
-  }, ()=>{ /* 筆數輔助顯示，讀不到略過 */ });
-}
 
-// 點畫面任何地方都重新聚焦掃描框（避免焦點跑掉掃不進）
 document.addEventListener('click', ()=>{ if(!busy && !modal.classList.contains('show')) focusScan(); });
 
-window.addEventListener('load',()=>{ focusScan(); refreshCount(); });
+window.addEventListener('load',()=>{ focusScan(); renderList(); });
 </script>
 </body>
 </html>
