@@ -245,20 +245,44 @@ function nextStep(){
   step++; renderStep();
 }
 
+/* ====== JSONP 呼叫（繞過 Apps Script 的 CORS 限制）====== */
+let jsonpSeq=0;
+function jsonpCall(paramsObj, onOk, onErr){
+  const cbName = 'w82cb_' + (++jsonpSeq) + '_' + Date.now();
+  const params = new URLSearchParams(paramsObj);
+  params.set('callback', cbName);
+  const url = API_URL + '?' + params.toString();
+
+  const script = document.createElement('script');
+  let done=false;
+  const timer = setTimeout(()=>{
+    if(done) return; done=true;
+    cleanup(); onErr && onErr('逾時，請檢查網路');
+  }, 15000);
+
+  window[cbName] = (res)=>{
+    if(done) return; done=true;
+    clearTimeout(timer); cleanup();
+    onOk && onOk(res);
+  };
+  function cleanup(){
+    try{ delete window[cbName]; }catch(e){ window[cbName]=undefined; }
+    if(script.parentNode) script.parentNode.removeChild(script);
+  }
+  script.onerror = ()=>{
+    if(done) return; done=true;
+    clearTimeout(timer); cleanup(); onErr && onErr('載入失敗');
+  };
+  script.src = url;
+  document.body.appendChild(script);
+}
+
 /* ====== 送出 ====== */
 function submit(){
   body.innerHTML=`<div class="step">寫入中…</div><h2>請稍候</h2>`;
-  // GET 已證實可通（POST+no-cors 在 iOS 會被靜默丟棄）。
-  // 把資料放到網址參數，走 GET 讓後端 doGet 寫入。
-  const params = new URLSearchParams({
-    action:'append',
-    b:cur.b, c:cur.c, d:cur.d, e:cur.e, f:cur.f, g:cur.g
-  });
-  const url = API_URL + '?' + params.toString();
-
-  fetch(url, { method:'GET', redirect:'follow' })
-    .then(r=>r.json())
-    .then(res=>{
+  jsonpCall(
+    { action:'append', b:cur.b, c:cur.c, d:cur.d, e:cur.e, f:cur.f, g:cur.g },
+    (res)=>{
       if(res&&res.ok){
         document.getElementById('lastLine').textContent=
           cur.b+'　'+cur.c+'　'+cur.d+'　'+cur.e+'件　'+(cur.g||'-')+'kg';
@@ -269,8 +293,9 @@ function submit(){
         toast('寫入失敗：'+((res&&res.error)||'未知'));
       }
       resetToScan();
-    })
-    .catch(err=>{ toast('連線失敗：'+err); resetToScan(); });
+    },
+    (err)=>{ toast('連線失敗：'+err); resetToScan(); }
+  );
 }
 
 function resetToScan(){
@@ -310,12 +335,10 @@ function toast(msg){
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200);
 }
 function refreshCount(){
-  fetch(API_URL, { redirect:'follow' })
-    .then(r=>r.json())
-    .then(res=>{
-      if(res&&res.ok&&typeof res.count==='number')
-        document.getElementById('count').textContent='今日 '+res.count+' 筆';
-    }).catch(()=>{ /* 筆數只是輔助顯示，讀不到就略過 */ });
+  jsonpCall({ action:'count' }, (res)=>{
+    if(res&&res.ok&&typeof res.count==='number')
+      document.getElementById('count').textContent='今日 '+res.count+' 筆';
+  }, ()=>{ /* 筆數輔助顯示，讀不到略過 */ });
 }
 
 // 點畫面任何地方都重新聚焦掃描框（避免焦點跑掉掃不進）
