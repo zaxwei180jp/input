@@ -84,7 +84,10 @@
 <body>
 <header>
   <h1>W-82 掃描登錄</h1>
-  <span id="count">共 0 筆</span>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span id="count">共 0 筆</span>
+    <button id="btnSettings" style="background:rgba(255,255,255,.18);border:none;color:#fff;font-size:16px;padding:4px 10px;border-radius:20px;">⚙️</button>
+  </div>
 </header>
 
 <div class="wrap">
@@ -120,14 +123,28 @@
 <div class="toast" id="toast"></div>
 
 <script>
-/* ★ C 磚塊選單名單 */
-const C_OPTIONS = ['西濃','佐川','郵局','黑貓','AMAZON','ASKUL LOGIST','ファイズEC宅配','久留米運送','福山通運','T.M.G','BIC CAMERA','五大物產','名鉄','ECO','浪速','トナミ運輸','無印良品','第一貨物','JPロジスティクス','FedEx','DHL'];
+/* ====== 磚塊清單（可於 ⚙️ 設定內管理，存於本機）====== */
+const DEFAULT_LISTS = {
+  B: ['Q-1','C-44','C-127','C-131','D-12','D-13','ED-1','G-1','H-24','H-70','H-86','K-3','M-2','PH-101','SL-2','T-6','T-17','T-23','T-33','TIF','W-35','Y-29','Y-32','Z-7'],
+  C: ['西濃','佐川','郵局','黑貓','AMAZON','ASKUL LOGIST','ファイズEC宅配','久留米運送','福山通運','T.M.G','BIC CAMERA','五大物產','名鉄','ECO','浪速','トナミ運輸','無印良品','第一貨物','JPロジスティクス','FedEx','DHL'],
+  F: ['MH-86','RS-104','BW-24','TIF','客','RS-68']
+};
+const LISTS_KEY = 'w82_tile_lists';
 
-/* ★ B 客戶編號常用磚塊（Q-1 置頂，其餘依字母數字排序） */
-const B_OPTIONS = ['Q-1','C-44','C-127','C-131','D-12','D-13','ED-1','G-1','H-24','H-70','H-86','K-3','M-2','PH-101','SL-2','T-6','T-17','T-23','T-33','TIF','W-35','Y-29','Y-32','Z-7'];
+function loadLists(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(LISTS_KEY)||'null');
+    if(saved && Array.isArray(saved.B) && Array.isArray(saved.C) && Array.isArray(saved.F)) return saved;
+  }catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULT_LISTS));
+}
+function saveLists(l){ try{ localStorage.setItem(LISTS_KEY, JSON.stringify(l)); }catch(e){} }
+let LISTS = loadLists();
 
-/* ★ F 備註常用磚塊 */
-const F_OPTIONS = ['MH-86','RS-104','BW-24','TIF','客','RS-68'];
+/* 取用時的別名（動態） */
+function B_OPTIONS(){ return LISTS.B; }
+function C_OPTIONS(){ return LISTS.C; }
+function F_OPTIONS(){ return LISTS.F; }
 
 const STORE_KEY = 'w82_scan_records';
 
@@ -328,7 +345,7 @@ function prevStep(){
 
 /* B 客編：常用磚塊 + 底部手動輸入 */
 function renderBTiles(stepLabel){
-  const tiles=B_OPTIONS.map(o=>
+  const tiles=B_OPTIONS().map(o=>
     `<div class="tile ${cur.b===o?'sel':''}" onclick="pickB('${o.replace(/'/g,"\\'")}')">${o}</div>`
   ).join('');
   body.innerHTML=`
@@ -357,7 +374,7 @@ function pickB(val){
 
 /* F 備註：常用磚塊 + 底部手動輸入，不自動彈鍵盤，可留空 */
 function renderNote(stepLabel){
-  const tiles=F_OPTIONS.map(o=>
+  const tiles=F_OPTIONS().map(o=>
     `<div class="tile ${cur.f===o?'sel':''}" onclick="pickF('${o.replace(/'/g,"\\'")}')">${o}</div>`
   ).join('');
   body.innerHTML=`
@@ -403,7 +420,7 @@ function renderInput(title,mode,stepLabel,upper,isLast){
 }
 
 function renderTiles(stepLabel){
-  const tiles=C_OPTIONS.map(o=>
+  const tiles=C_OPTIONS().map(o=>
     `<div class="tile ${cur.c===o?'sel':''}" onclick="pickC('${o.replace(/'/g,"\\'")}')">${o}</div>`
   ).join('');
   body.innerHTML=`
@@ -511,6 +528,74 @@ function manualD(){
 /* ====== 按鈕綁定 ====== */
 document.getElementById('btnCopy').onclick=copyAll;
 document.getElementById('btnClear').onclick=clearAll;
+
+/* ====== ⚙️ 設定：管理磚塊清單 ====== */
+let settingTab='B';
+document.getElementById('btnSettings').onclick=()=>{
+  if(busy) return;
+  busy=true;
+  settingTab='B';
+  renderSettings();
+};
+function renderSettings(){
+  openModal();
+  const tabs=[['B','客戶編號'],['C','物流'],['F','備註']];
+  const tabHtml=tabs.map(([k,label])=>
+    `<button onclick="switchTab('${k}')" style="flex:1;padding:10px;border:none;border-radius:10px;font-size:14px;font-weight:600;
+      background:${settingTab===k?'var(--accent)':'#fff'};color:${settingTab===k?'#fff':'var(--txt)'};
+      border:1px solid var(--line);">${label}</button>`).join('');
+  const items=LISTS[settingTab].map((o,i)=>`
+    <div style="display:flex;align-items:center;gap:6px;background:#fbfcfa;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;">
+      <span style="flex:1;font-size:15px;font-weight:600;word-break:break-all;">${esc(o)}</span>
+      <button onclick="moveItem(${i},-1)" style="border:1px solid var(--line);background:#fff;border-radius:8px;width:34px;height:34px;font-size:16px;">↑</button>
+      <button onclick="moveItem(${i},1)" style="border:1px solid var(--line);background:#fff;border-radius:8px;width:34px;height:34px;font-size:16px;">↓</button>
+      <button onclick="removeItem(${i})" style="border:none;background:none;color:var(--danger);font-size:14px;padding:0 6px;">刪除</button>
+    </div>`).join('');
+  body.innerHTML=`
+    <div class="step">⚙️ 磚塊清單管理（存於本機，改完立即生效）</div>
+    <div style="display:flex;gap:8px;margin:10px 0;">${tabHtml}</div>
+    <div style="max-height:38vh;overflow-y:auto;">${items||'<div class="empty">清單是空的</div>'}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <input class="fld upper" id="newItem" placeholder="輸入新項目" style="flex:1;" autocapitalize="characters">
+      <button class="btn" style="width:auto;padding:14px 18px;" onclick="addItem()">新增</button>
+    </div>
+    <div class="row">
+      <button class="btn ghost" onclick="resetDefault()">還原預設</button>
+      <button class="btn" onclick="closeSettings()">完成</button>
+    </div>`;
+  const inp=document.getElementById('newItem');
+  inp.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();addItem();} };
+}
+function switchTab(k){ settingTab=k; renderSettings(); }
+function moveItem(i,dir){
+  const arr=LISTS[settingTab];
+  const j=i+dir;
+  if(j<0||j>=arr.length) return;
+  [arr[i],arr[j]]=[arr[j],arr[i]];
+  saveLists(LISTS); renderSettings();
+}
+function removeItem(i){
+  const arr=LISTS[settingTab];
+  if(!confirm('刪除「'+arr[i]+'」？')) return;
+  arr.splice(i,1);
+  saveLists(LISTS); renderSettings();
+}
+function addItem(){
+  const inp=document.getElementById('newItem');
+  const v=inp.value.trim().toUpperCase();
+  if(!v){ toast('請輸入內容'); return; }
+  if(LISTS[settingTab].includes(v)){ toast('已存在'); return; }
+  LISTS[settingTab].push(v);
+  saveLists(LISTS);
+  renderSettings();
+  toast('已新增 '+v);
+}
+function resetDefault(){
+  if(!confirm('將「'+({B:'客戶編號',C:'物流',F:'備註'})[settingTab]+'」清單還原成預設？')) return;
+  LISTS[settingTab]=JSON.parse(JSON.stringify(DEFAULT_LISTS[settingTab]));
+  saveLists(LISTS); renderSettings();
+}
+function closeSettings(){ resetToScan(); }
 
 /* ====== 小工具 ====== */
 let toastT=null;
