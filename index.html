@@ -408,11 +408,6 @@ function renderInput(title,mode,stepLabel,upper,isLast){
     <input class="fld ${upper?'upper':''}" id="fld" inputmode="${mode==='decimal'?'decimal':'text'}"
       ${mode==='decimal'?'':'autocapitalize="characters"'} placeholder="${mode==='decimal'?'輸入重量（可小數）':'點這裡輸入'}" value="${cur[STEPS[step]]||''}">
     <button class="btn ghost" style="margin-top:10px;" onclick="document.getElementById('fld').focus();document.getElementById('fld').click();">⌨️ 叫出數字鍵盤</button>
-    ${isLast?`
-    <button class="btn ghost" style="margin-top:10px;" onclick="document.getElementById('camIn').click();">📷 拍照</button>
-    <input id="camIn" type="file" accept="image/*" capture="environment" style="display:none;" onchange="onPhotoTaken(this)">
-    <div id="photoHint" style="font-size:13px;color:var(--sub);text-align:center;margin-top:6px;"></div>
-    `:''}
     <div class="row">
       <button class="btn ghost" onclick="prevStep()">上一步</button>
       <button class="btn" onclick="nextStep()">${isLast?'儲存這筆':'下一步'}</button>
@@ -422,15 +417,6 @@ function renderInput(title,mode,stepLabel,upper,isLast){
   setTimeout(()=>{ try{ f.focus({preventScroll:true}); f.click(); }catch(e){} },200);
   f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
   f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
-}
-
-/* 拍照：叫出 iPhone 原生相機。iOS 用原生相機拍的照片會進相機膠卷 */
-function onPhotoTaken(input){
-  if(input.files && input.files.length>0){
-    const hint=document.getElementById('photoHint');
-    if(hint) hint.textContent='✓ 已拍攝 '+input.files.length+' 張（請確認已存到相簿）';
-    navigator.vibrate&&navigator.vibrate(40);
-  }
 }
 
 function renderTiles(stepLabel){
