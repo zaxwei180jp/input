@@ -203,6 +203,7 @@
       <input id="mgrAdd" placeholder="新增客編（例 T-40）" autocapitalize="characters">
       <button onclick="mgrAddItem()">新增</button>
     </div>
+    <button class="btn ghost" style="margin-bottom:14px;" onclick="mgrResort()">↕ 重新排序 A-Z</button>
     <div id="mgrList"></div>
     <div class="mcount" id="mgrCount"></div>
   </div>
@@ -792,6 +793,13 @@ function mgrRemove(idx){
   saveLists(LISTS);
   renderMgr();
   toast('已刪除 '+v);
+}
+/* 手動重新排序 */
+function mgrResort(){
+  sortB();
+  saveLists(LISTS);
+  renderMgr();
+  toast('✓ 已重新排序');
 }
 /* 排序：Q-1 置頂，其餘依字母+數字 */
 function sortB(){
