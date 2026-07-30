@@ -855,7 +855,13 @@ function toast(msg){
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200);
 }
 
-document.addEventListener('click', ()=>{ if(!busy && !modal.classList.contains('show')) focusScan(); });
+document.addEventListener('click', ()=>{
+  if(busy) return;
+  if(modal.classList.contains('show')) return;
+  if(document.getElementById('mgr').classList.contains('show')) return;
+  if(document.getElementById('bcoverlay').classList.contains('show')) return;
+  focusScan();
+});
 
 window.addEventListener('load',()=>{ focusScan(); renderList(); syncNow(); });
 </script>
