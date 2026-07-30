@@ -189,18 +189,22 @@
   <button class="close" onclick="closeZoom()">關閉</button>
 </div>
 
-<!-- 客編管理頁 -->
+<!-- 客編 / 備註管理頁 -->
 <div class="mgr" id="mgr">
   <div class="mhead">
-    <h2>👤 客戶編號管理</h2>
+    <h2 id="mgrTitle">👤 客戶編號管理</h2>
     <button class="mclose" onclick="closeMgr()">完成</button>
   </div>
   <div class="mbody">
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button id="mgrTabB" onclick="mgrSwitch('B')" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-weight:600;">客戶編號</button>
+      <button id="mgrTabF" onclick="mgrSwitch('F')" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-weight:600;">備註</button>
+    </div>
     <div class="searchbar">
-      <input id="mgrSearch" placeholder="🔍 搜尋客編…" autocapitalize="characters" oninput="renderMgr()">
+      <input id="mgrSearch" placeholder="🔍 搜尋…" autocapitalize="characters" oninput="renderMgr()">
     </div>
     <div class="addbar">
-      <input id="mgrAdd" placeholder="新增客編（例 T-40）" autocapitalize="characters">
+      <input id="mgrAdd" placeholder="新增項目" autocapitalize="characters">
       <button onclick="mgrAddItem()">新增</button>
     </div>
     <button class="btn ghost" style="margin-bottom:14px;" onclick="mgrResort()">↕ 重新排序 A-Z</button>
@@ -227,7 +231,7 @@ function loadLists(){
 }
 function saveLists(l){ try{ localStorage.setItem(LISTS_KEY, JSON.stringify(l)); }catch(e){} }
 let LISTS = loadLists();
-try{ sortB(); saveLists(LISTS); }catch(e){}
+try{ sortList('B'); sortList('F'); saveLists(LISTS); }catch(e){}
 
 /* 取用時的別名（動態） */
 function B_OPTIONS(){ return LISTS.B; }
@@ -648,7 +652,7 @@ document.getElementById('btnSettings').onclick=()=>{
 };
 function renderSettings(){
   openModal();
-  const tabs=[['C','物流'],['F','備註']];
+  const tabs=[['C','物流']];
   const tabHtml=tabs.map(([k,label])=>
     `<button onclick="switchTab('${k}')" style="flex:1;padding:10px;border:none;border-radius:10px;font-size:14px;font-weight:600;
       background:${settingTab===k?'var(--accent)':'#fff'};color:${settingTab===k?'#fff':'var(--txt)'};
@@ -726,15 +730,17 @@ function zoomBarcode(key){
 }
 function closeZoom(){ document.getElementById('bcoverlay').classList.remove('show'); }
 
-/* ====== 👤 客戶編號管理頁 ====== */
+/* ====== 👤 客戶編號 / 備註管理頁 ====== */
+let mgrKey='B';  // 目前管理的清單：B=客編, F=備註
 document.getElementById('btnMgr').onclick=()=>{
   if(busy) return;
-  sortB();               // 開啟時自動排序 A-Z + 數字
-  saveLists(LISTS);      // 存回，讓掃描第二層也同步排序
+  mgrKey='B';
+  sortList(mgrKey);
+  saveLists(LISTS);
   document.getElementById('mgrSearch').value='';
   document.getElementById('mgrAdd').value='';
   document.getElementById('mgr').classList.add('show');
-  renderMgr();
+  mgrSwitch('B');
 };
 document.getElementById('mgrAdd').addEventListener('keydown',e=>{
   if(e.key==='Enter'){ e.preventDefault(); mgrAddItem(); }
@@ -744,9 +750,30 @@ document.getElementById('mgrSearch').addEventListener('keydown',e=>{
 });
 function closeMgr(){ document.getElementById('mgr').classList.remove('show'); }
 
+/* 切換分頁 B / F */
+function mgrSwitch(k){
+  mgrKey=k;
+  sortList(k);
+  saveLists(LISTS);
+  const isB = k==='B';
+  document.getElementById('mgrTitle').textContent = isB?'👤 客戶編號管理':'👤 備註管理';
+  document.getElementById('mgrSearch').placeholder = isB?'🔍 搜尋客編…':'🔍 搜尋備註…';
+  document.getElementById('mgrAdd').placeholder = isB?'新增客編（例 T-40）':'新增備註';
+  // 分頁鈕樣式
+  const tB=document.getElementById('mgrTabB'), tF=document.getElementById('mgrTabF');
+  tB.style.background = isB?'var(--accent)':'#fff';
+  tB.style.color = isB?'#fff':'var(--txt)';
+  tF.style.background = !isB?'var(--accent)':'#fff';
+  tF.style.color = !isB?'#fff':'var(--txt)';
+  document.getElementById('mgrSearch').value='';
+  document.getElementById('mgrAdd').value='';
+  renderMgr();
+}
+
 function renderMgr(){
+  const label = mgrKey==='B'?'客編':'備註';
   const q=(document.getElementById('mgrSearch').value||'').trim().toUpperCase();
-  let list=LISTS.B.slice();
+  let list=LISTS[mgrKey].slice();
   if(q) list=list.filter(x=>x.toUpperCase().includes(q));
 
   // 依首字母分組
@@ -756,12 +783,12 @@ function renderMgr(){
 
   let html='';
   if(list.length===0){
-    html='<div class="empty">找不到符合的客編</div>';
+    html='<div class="empty">找不到符合的'+label+'</div>';
   } else {
     keys.forEach(k=>{
       html+='<div class="grp">'+k+'</div>';
       groups[k].forEach(x=>{
-        const idx=LISTS.B.indexOf(x);
+        const idx=LISTS[mgrKey].indexOf(x);
         html+=`<div class="mitem">
           <span class="code">${esc(x)}</span>
           <button class="rm" onclick="mgrRemove(${idx})">刪除</button>
@@ -770,42 +797,46 @@ function renderMgr(){
     });
   }
   document.getElementById('mgrList').innerHTML=html;
-  document.getElementById('mgrCount').textContent='共 '+LISTS.B.length+' 個客編'+(q?'（篩選出 '+list.length+' 個）':'');
+  document.getElementById('mgrCount').textContent='共 '+LISTS[mgrKey].length+' 個'+label+(q?'（篩選出 '+list.length+' 個）':'');
 }
 
 function mgrAddItem(){
+  const label = mgrKey==='B'?'客編':'備註';
   const inp=document.getElementById('mgrAdd');
   const v=inp.value.trim().toUpperCase();
-  if(!v){ toast('請輸入客編'); return; }
-  if(LISTS.B.includes(v)){ toast('「'+v+'」已存在'); return; }
-  LISTS.B.push(v);
-  sortB();
+  if(!v){ toast('請輸入'+label); return; }
+  if(LISTS[mgrKey].includes(v)){ toast('「'+v+'」已存在'); return; }
+  LISTS[mgrKey].push(v);
+  sortList(mgrKey);
   saveLists(LISTS);
   inp.value='';
   renderMgr();
   toast('已新增 '+v);
 }
 function mgrRemove(idx){
-  const v=LISTS.B[idx];
+  const label = mgrKey==='B'?'客編':'備註';
+  const v=LISTS[mgrKey][idx];
   if(v===undefined) return;
-  if(!confirm('刪除客編「'+v+'」？')) return;
-  LISTS.B.splice(idx,1);
+  if(!confirm('刪除'+label+'「'+v+'」？')) return;
+  LISTS[mgrKey].splice(idx,1);
   saveLists(LISTS);
   renderMgr();
   toast('已刪除 '+v);
 }
 /* 手動重新排序 */
 function mgrResort(){
-  sortB();
+  sortList(mgrKey);
   saveLists(LISTS);
   renderMgr();
   toast('✓ 已重新排序');
 }
-/* 排序：Q-1 置頂，其餘依字母+數字 */
-function sortB(){
-  LISTS.B.sort((a,b)=>{
-    if(a==='Q-1') return -1;
-    if(b==='Q-1') return 1;
+/* 排序：客編的 Q-1 置頂，其餘依字母+數字；備註同規則但無置頂 */
+function sortList(key){
+  LISTS[key].sort((a,b)=>{
+    if(key==='B'){
+      if(a==='Q-1') return -1;
+      if(b==='Q-1') return 1;
+    }
     const pa=a.match(/^([A-Za-z]+)-?(\d*)/), pb=b.match(/^([A-Za-z]+)-?(\d*)/);
     const la=(pa?pa[1]:a).toUpperCase(), lb=(pb?pb[1]:b).toUpperCase();
     if(la!==lb) return la<lb?-1:1;
@@ -813,6 +844,8 @@ function sortB(){
     return na-nb;
   });
 }
+/* 相容舊呼叫：sortB 等於排客編 */
+function sortB(){ sortList('B'); }
 
 /* ====== 小工具 ====== */
 let toastT=null;
