@@ -75,6 +75,18 @@
     display:flex;align-items:center;justify-content:center;min-height:52px;line-height:1.2;}
   .tile:active,.tile.sel{background:var(--accent);color:#fff;border-color:var(--accent);}
 
+  .wdisplay{border:2px solid var(--accent);border-radius:14px;padding:16px 20px;
+    font-size:36px;font-weight:700;text-align:right;background:#fbfcfa;min-height:70px;
+    display:flex;align-items:center;justify-content:flex-end;letter-spacing:1px;}
+  .wdisplay .wunit{font-size:19px;color:var(--sub);margin-left:10px;font-weight:600;}
+  .wdisplay .wph{color:#c3c8bd;}
+  .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;}
+  .key{padding:20px 0;border-radius:14px;border:1.5px solid var(--line);background:#fff;
+    font-size:26px;font-weight:600;color:var(--txt);text-align:center;user-select:none;}
+  .key:active{background:var(--accent);color:#fff;}
+  .key.fn{font-size:22px;background:#f0f1ee;}
+  .key.del{color:var(--danger);}
+
   .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
     background:var(--header);color:#fff;padding:12px 20px;border-radius:30px;font-size:14px;
     opacity:0;transition:.25s;z-index:40;pointer-events:none;max-width:90%;text-align:center;}
@@ -201,11 +213,11 @@
       <button id="mgrTabF" onclick="mgrSwitch('F')" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-weight:600;">備註</button>
     </div>
     <div class="searchbar">
-      <input id="mgrSearch" placeholder="🔍 搜尋…" autocapitalize="characters" oninput="renderMgr()">
+      <input id="mgrSearch" placeholder="🔍 搜尋…" autocapitalize="characters" oninput="renderMgr()" onclick="event.stopPropagation();this.focus();">
     </div>
     <div class="addbar">
-      <input id="mgrAdd" placeholder="新增項目" autocapitalize="characters">
-      <button onclick="mgrAddItem()">新增</button>
+      <input id="mgrAdd" placeholder="新增項目" autocapitalize="characters" onclick="event.stopPropagation();this.focus();">
+      <button onclick="event.stopPropagation();mgrAddItem();">新增</button>
     </div>
     <button class="btn ghost" style="margin-bottom:14px;" onclick="mgrResort()">↕ 重新排序 A-Z</button>
     <div id="mgrList"></div>
@@ -380,7 +392,12 @@ function showManualCopy(text){
 
 /* ====== 掃描槍輸入 ====== */
 const scanIn=document.getElementById('scanIn');
-function focusScan(){ if(!busy){ scanIn.focus({preventScroll:true}); } }
+function focusScan(){
+  if(busy) return;
+  if(document.getElementById('mgr').classList.contains('show')) return;
+  if(document.getElementById('bcoverlay').classList.contains('show')) return;
+  scanIn.focus({preventScroll:true});
+}
 function cleanCode(s){ return s.replace(/\s+/g,'').trim(); }
 
 let bufTimer=null;
@@ -426,7 +443,7 @@ function renderStep(){
   else if(key==='c') renderTiles(stepLabel);
   else if(key==='e') renderQty(stepLabel);
   else if(key==='f') renderNote(stepLabel);
-  else if(key==='g') renderInput('重量','decimal',stepLabel,false,true);
+  else if(key==='g') renderWeight(stepLabel);
 }
 
 /* 上一步：回到前一個欄位；在第一步則取消整筆 */
@@ -512,6 +529,51 @@ function renderNote(stepLabel){
 function pickF(val){
   cur.f=val; cur.fManual='';
   step++; renderStep();
+}
+
+/* G 重量：App 內建數字鍵盤，不依賴 iOS 系統鍵盤 */
+function renderWeight(stepLabel){
+  // 收起任何殘留的 iOS 鍵盤（例如前面客編手動輸入叫出的）
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+
+  const v = (cur.g===''||cur.g==null) ? '' : String(cur.g);
+  body.innerHTML=`
+    <div class="step">${stepLabel}</div>
+    <h2>重量</h2>
+    <div class="wdisplay"><span id="wval">${v||'<span class=\"wph\">0</span>'}</span><span class="wunit">kg</span></div>
+    <div class="keypad">
+      <div class="key" onclick="wtap('1')">1</div>
+      <div class="key" onclick="wtap('2')">2</div>
+      <div class="key" onclick="wtap('3')">3</div>
+      <div class="key" onclick="wtap('4')">4</div>
+      <div class="key" onclick="wtap('5')">5</div>
+      <div class="key" onclick="wtap('6')">6</div>
+      <div class="key" onclick="wtap('7')">7</div>
+      <div class="key" onclick="wtap('8')">8</div>
+      <div class="key" onclick="wtap('9')">9</div>
+      <div class="key fn" onclick="wtap('.')">·</div>
+      <div class="key" onclick="wtap('0')">0</div>
+      <div class="key fn del" onclick="wtap('del')">⌫</div>
+    </div>
+    <div class="row">
+      <button class="btn ghost" onclick="prevStep()">上一步</button>
+      <button class="btn" onclick="saveWeight()">儲存這筆</button>
+    </div>`;
+}
+function wtap(k){
+  let v=(cur.g===''||cur.g==null)?'':String(cur.g);
+  if(k==='del'){ v=v.slice(0,-1); }
+  else if(k==='.'){ if(v===''){ v='0.'; } else if(!v.includes('.')){ v+='.'; } }
+  else { v+=k; }
+  cur.g=v;
+  const el=document.getElementById('wval');
+  if(el) el.innerHTML = v || '<span class="wph">0</span>';
+}
+function saveWeight(){
+  // 重量可留空；有值則存
+  const raw=(cur.g===''||cur.g==null)?'':String(cur.g);
+  cur.g = raw==='' ? '' : raw;
+  saveThis();
 }
 
 function renderInput(title,mode,stepLabel,upper,isLast){
