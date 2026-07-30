@@ -639,16 +639,16 @@ document.getElementById('btnCopy').onclick=copyAll;
 document.getElementById('btnClear').onclick=clearAll;
 
 /* ====== ⚙️ 設定：管理磚塊清單 ====== */
-let settingTab='B';
+let settingTab='C';
 document.getElementById('btnSettings').onclick=()=>{
   if(busy) return;
   busy=true;
-  settingTab='B';
+  settingTab='C';
   renderSettings();
 };
 function renderSettings(){
   openModal();
-  const tabs=[['B','客戶編號'],['C','物流'],['F','備註']];
+  const tabs=[['C','物流'],['F','備註']];
   const tabHtml=tabs.map(([k,label])=>
     `<button onclick="switchTab('${k}')" style="flex:1;padding:10px;border:none;border-radius:10px;font-size:14px;font-weight:600;
       background:${settingTab===k?'var(--accent)':'#fff'};color:${settingTab===k?'#fff':'var(--txt)'};
