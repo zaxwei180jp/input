@@ -90,6 +90,30 @@
   .bcoverlay .lbl{font-size:16px;font-weight:700;margin-bottom:16px;}
   .bcoverlay .close{margin-top:20px;padding:14px 40px;border:none;border-radius:12px;
     background:var(--accent);color:#fff;font-size:16px;font-weight:600;}
+
+  /* 客編管理全螢幕頁 */
+  .mgr{position:fixed;inset:0;background:var(--bg);z-index:55;display:none;flex-direction:column;}
+  .mgr.show{display:flex;}
+  .mgr .mhead{background:var(--header);color:#fff;padding:14px 16px;display:flex;
+    justify-content:space-between;align-items:center;}
+  .mgr .mhead h2{margin:0;font-size:17px;}
+  .mgr .mhead .mclose{background:rgba(255,255,255,.18);border:none;color:#fff;
+    font-size:15px;padding:6px 14px;border-radius:20px;}
+  .mgr .mbody{flex:1;overflow-y:auto;padding:16px;max-width:520px;margin:0 auto;width:100%;}
+  .mgr .searchbar{display:flex;gap:8px;margin-bottom:12px;}
+  .mgr .searchbar input{flex:1;padding:12px 14px;font-size:16px;border:1.5px solid var(--line);
+    border-radius:10px;background:#fff;outline:none;}
+  .mgr .addbar{display:flex;gap:8px;margin-bottom:14px;}
+  .mgr .addbar input{flex:1;padding:12px 14px;font-size:16px;border:1.5px solid var(--accent);
+    border-radius:10px;background:#fff;outline:none;text-transform:uppercase;}
+  .mgr .addbar button{border:none;border-radius:10px;background:var(--accent);color:#fff;
+    font-weight:600;padding:0 18px;font-size:15px;}
+  .mgr .grp{font-size:13px;font-weight:700;color:var(--sub);margin:14px 0 6px;padding-left:2px;}
+  .mgr .mitem{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);
+    border-radius:10px;padding:12px 14px;margin-bottom:6px;}
+  .mgr .mitem .code{flex:1;font-size:16px;font-weight:600;}
+  .mgr .mitem .rm{border:none;background:none;color:var(--danger);font-size:14px;padding:4px 8px;}
+  .mgr .mcount{font-size:13px;color:var(--sub);text-align:center;margin-top:16px;}
 </style>
 </head>
 <body>
@@ -97,6 +121,7 @@
   <h1>W-82 掃描登錄</h1>
   <div style="display:flex;gap:8px;align-items:center;">
     <span id="count">共 0 筆</span>
+    <button id="btnMgr" style="background:rgba(255,255,255,.18);border:none;color:#fff;font-size:16px;padding:4px 10px;border-radius:20px;">👤</button>
     <button id="btnSettings" style="background:rgba(255,255,255,.18);border:none;color:#fff;font-size:16px;padding:4px 10px;border-radius:20px;">⚙️</button>
   </div>
 </header>
@@ -162,6 +187,25 @@
   <div class="lbl" id="bclbl"></div>
   <img id="bcimg" src="">
   <button class="close" onclick="closeZoom()">關閉</button>
+</div>
+
+<!-- 客編管理頁 -->
+<div class="mgr" id="mgr">
+  <div class="mhead">
+    <h2>👤 客戶編號管理</h2>
+    <button class="mclose" onclick="closeMgr()">完成</button>
+  </div>
+  <div class="mbody">
+    <div class="searchbar">
+      <input id="mgrSearch" placeholder="🔍 搜尋客編…" autocapitalize="characters" oninput="renderMgr()">
+    </div>
+    <div class="addbar">
+      <input id="mgrAdd" placeholder="新增客編（例 T-40）" autocapitalize="characters">
+      <button onclick="mgrAddItem()">新增</button>
+    </div>
+    <div id="mgrList"></div>
+    <div class="mcount" id="mgrCount"></div>
+  </div>
 </div>
 
 <script>
@@ -358,7 +402,7 @@ function onScan(text){
   if(busy) return;
   busy=true;
   navigator.vibrate&&navigator.vibrate(60);
-  cur={ b:'', bManual:'', c:'', d:cleanCode(text), e:1, f:'', fManual:'', g:'' };
+  cur={ b:'', bManual:'', c:'', d:cleanCode(text), e:1, f:'', fManual:'', g:'' }; bLetter=null;
   step=0; renderStep();
 }
 
@@ -385,32 +429,53 @@ function prevStep(){
   step--; renderStep();
 }
 
-/* B 客編：常用磚塊 + 底部手動輸入 */
+/* B 客編：兩層選取 — 先字母、再編號。bLetter 記錄目前選的字母 */
+let bLetter=null;
 function renderBTiles(stepLabel){
-  const tiles=B_OPTIONS().map(o=>
-    `<div class="tile ${cur.b===o?'sel':''}" onclick="pickB('${o.replace(/'/g,"\\'")}')">${o}</div>`
-  ).join('');
-  body.innerHTML=`
-    <div class="step">${stepLabel}</div>
-    <h2>客戶編號</h2>
-    <div class="tiles">${tiles}</div>
-    <div style="font-size:13px;color:var(--sub);margin:14px 0 6px;">或手動輸入（自動大寫）</div>
-    <input class="fld upper" id="fld" inputmode="text" autocapitalize="characters" placeholder="點這裡輸入" value="${cur.bManual||''}">
-    <div class="row">
-      <button class="btn ghost" onclick="prevStep()">上一步</button>
-      <button class="btn" onclick="nextStep()">下一步</button>
-    </div>`;
-  const f=document.getElementById('fld');
-  f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
-  f.oninput=()=>{
-    document.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
-    cur.b=''; cur.bManual=f.value;
-  };
-  f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
+  const all=B_OPTIONS();
+  // 首字母清單（有客編的才顯示）
+  const letters=[...new Set(all.map(x=>x[0].toUpperCase()))].sort();
+
+  if(!bLetter){
+    // 第一層：選字母
+    const letterTiles=letters.map(L=>{
+      const n=all.filter(x=>x[0].toUpperCase()===L).length;
+      return `<div class="tile" onclick="pickBLetter('${L}')">${L}<span style="font-size:11px;color:var(--sub);display:block;">${n}</span></div>`;
+    }).join('');
+    body.innerHTML=`
+      <div class="step">${stepLabel}</div>
+      <h2>客戶編號 — 選字母</h2>
+      <div class="tiles" style="grid-template-columns:1fr 1fr 1fr 1fr;">${letterTiles}</div>
+      <div style="font-size:13px;color:var(--sub);margin:14px 0 6px;">或直接手動輸入（自動大寫）</div>
+      <input class="fld upper" id="fld" inputmode="text" autocapitalize="characters" placeholder="點這裡輸入客編" value="${cur.bManual||''}">
+      <div class="row">
+        <button class="btn ghost" onclick="prevStep()">上一步</button>
+        <button class="btn" onclick="nextStep()">下一步</button>
+      </div>`;
+    const f=document.getElementById('fld');
+    f.addEventListener('touchend',()=>{ f.focus(); },{passive:true});
+    f.oninput=()=>{ cur.b=''; cur.bManual=f.value; };
+    f.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();nextStep();} };
+  } else {
+    // 第二層：選該字母的編號
+    const items=all.filter(x=>x[0].toUpperCase()===bLetter);
+    const codeTiles=items.map(o=>
+      `<div class="tile ${cur.b===o?'sel':''}" onclick="pickB('${o.replace(/'/g,"\\'")}')">${o}</div>`
+    ).join('');
+    body.innerHTML=`
+      <div class="step">${stepLabel}</div>
+      <h2>客戶編號 — ${bLetter} 系列</h2>
+      <div class="tiles">${codeTiles}</div>
+      <div class="row">
+        <button class="btn ghost" onclick="backToLetters()">↩ 選其他字母</button>
+      </div>`;
+  }
 }
-/* 點磚塊直接進下一步 */
+function pickBLetter(L){ bLetter=L; renderBTiles(''); }
+function backToLetters(){ bLetter=null; renderBTiles(''); }
+/* 點編號直接進下一步 */
 function pickB(val){
-  cur.b=val; cur.bManual='';
+  cur.b=val; cur.bManual=''; bLetter=null;
   step++; renderStep();
 }
 
@@ -549,7 +614,7 @@ function cancelAll(){ resetToScan(); }
 document.getElementById('btnManual').onclick=()=>{
   if(busy) return;
   busy=true;
-  cur={ b:'', bManual:'', c:'', d:'', e:1, f:'', fManual:'', g:'' };
+  cur={ b:'', bManual:'', c:'', d:'', e:1, f:'', fManual:'', g:'' }; bLetter=null;
   openModal();
   body.innerHTML=`
     <div class="step">手動輸入單號（D）</div>
@@ -658,6 +723,85 @@ function zoomBarcode(key){
   document.getElementById('bcoverlay').classList.add('show');
 }
 function closeZoom(){ document.getElementById('bcoverlay').classList.remove('show'); }
+
+/* ====== 👤 客戶編號管理頁 ====== */
+document.getElementById('btnMgr').onclick=()=>{
+  if(busy) return;
+  document.getElementById('mgrSearch').value='';
+  document.getElementById('mgrAdd').value='';
+  document.getElementById('mgr').classList.add('show');
+  renderMgr();
+};
+document.getElementById('mgrAdd').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ e.preventDefault(); mgrAddItem(); }
+});
+document.getElementById('mgrSearch').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ e.preventDefault(); }
+});
+function closeMgr(){ document.getElementById('mgr').classList.remove('show'); }
+
+function renderMgr(){
+  const q=(document.getElementById('mgrSearch').value||'').trim().toUpperCase();
+  let list=LISTS.B.slice();
+  if(q) list=list.filter(x=>x.toUpperCase().includes(q));
+
+  // 依首字母分組
+  const groups={};
+  list.forEach(x=>{ const k=x[0].toUpperCase(); (groups[k]=groups[k]||[]).push(x); });
+  const keys=Object.keys(groups).sort();
+
+  let html='';
+  if(list.length===0){
+    html='<div class="empty">找不到符合的客編</div>';
+  } else {
+    keys.forEach(k=>{
+      html+='<div class="grp">'+k+'</div>';
+      groups[k].forEach(x=>{
+        const idx=LISTS.B.indexOf(x);
+        html+=`<div class="mitem">
+          <span class="code">${esc(x)}</span>
+          <button class="rm" onclick="mgrRemove(${idx})">刪除</button>
+        </div>`;
+      });
+    });
+  }
+  document.getElementById('mgrList').innerHTML=html;
+  document.getElementById('mgrCount').textContent='共 '+LISTS.B.length+' 個客編'+(q?'（篩選出 '+list.length+' 個）':'');
+}
+
+function mgrAddItem(){
+  const inp=document.getElementById('mgrAdd');
+  const v=inp.value.trim().toUpperCase();
+  if(!v){ toast('請輸入客編'); return; }
+  if(LISTS.B.includes(v)){ toast('「'+v+'」已存在'); return; }
+  LISTS.B.push(v);
+  sortB();
+  saveLists(LISTS);
+  inp.value='';
+  renderMgr();
+  toast('已新增 '+v);
+}
+function mgrRemove(idx){
+  const v=LISTS.B[idx];
+  if(v===undefined) return;
+  if(!confirm('刪除客編「'+v+'」？')) return;
+  LISTS.B.splice(idx,1);
+  saveLists(LISTS);
+  renderMgr();
+  toast('已刪除 '+v);
+}
+/* 排序：Q-1 置頂，其餘依字母+數字 */
+function sortB(){
+  LISTS.B.sort((a,b)=>{
+    if(a==='Q-1') return -1;
+    if(b==='Q-1') return 1;
+    const pa=a.match(/^([A-Za-z]+)-?(\d*)/), pb=b.match(/^([A-Za-z]+)-?(\d*)/);
+    const la=(pa?pa[1]:a).toUpperCase(), lb=(pb?pb[1]:b).toUpperCase();
+    if(la!==lb) return la<lb?-1:1;
+    const na=parseInt(pa&&pa[2]||'0')||0, nb=parseInt(pb&&pb[2]||'0')||0;
+    return na-nb;
+  });
+}
 
 /* ====== 小工具 ====== */
 let toastT=null;
