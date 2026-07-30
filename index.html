@@ -226,6 +226,7 @@ function loadLists(){
 }
 function saveLists(l){ try{ localStorage.setItem(LISTS_KEY, JSON.stringify(l)); }catch(e){} }
 let LISTS = loadLists();
+try{ sortB(); saveLists(LISTS); }catch(e){}
 
 /* 取用時的別名（動態） */
 function B_OPTIONS(){ return LISTS.B; }
@@ -727,6 +728,8 @@ function closeZoom(){ document.getElementById('bcoverlay').classList.remove('sho
 /* ====== 👤 客戶編號管理頁 ====== */
 document.getElementById('btnMgr').onclick=()=>{
   if(busy) return;
+  sortB();               // 開啟時自動排序 A-Z + 數字
+  saveLists(LISTS);      // 存回，讓掃描第二層也同步排序
   document.getElementById('mgrSearch').value='';
   document.getElementById('mgrAdd').value='';
   document.getElementById('mgr').classList.add('show');
