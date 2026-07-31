@@ -38,7 +38,7 @@ export default async function handler(req, res) {
 
     // ── append 到分頁 ──
     const range = encodeURIComponent(sheetName + '!A:H');
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
