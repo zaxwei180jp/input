@@ -30,15 +30,16 @@ export default async function handler(req, res) {
     const token = await getAccessToken(key);
 
     // ── 組資料列：A日期 B客編 C物流 D單號 E件數 F備註 G重量 H出貨(空) ──
+    // 日期前加單引號：USER_ENTERED 模式下強制當文字，避免 2026.08.01 被轉成日期格式
     const values = records.map(r => [
-      r.date || '', r.b || '', r.c || '', String(r.d || ''),
+      r.date ? ("'" + r.date) : '', r.b || '', r.c || '', "'" + String(r.d || ''),
       Number(r.e) || 1, r.f || '',
       (r.g === '' || r.g == null) ? '' : Number(r.g), ''
     ]);
 
     // ── append 到分頁 ──
     const range = encodeURIComponent(sheetName + '!A:H');
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
