@@ -334,7 +334,7 @@ window.addEventListener('online', syncNow);
 function todayStr(){
   const d=new Date();
   const p=n=>String(n).padStart(2,'0');
-  return d.getFullYear()+'/'+p(d.getMonth()+1)+'/'+p(d.getDate());
+  return d.getFullYear()+'.'+p(d.getMonth()+1)+'.'+p(d.getDate());
 }
 
 /* ====== 列表顯示 ====== */
@@ -449,7 +449,26 @@ function renderStep(){
 /* 上一步：回到前一個欄位；在第一步則取消整筆 */
 function prevStep(){
   if(step<=0){ cancelAll(); return; }
-  step--; renderStep();
+  step--;
+  // 回上一步時，若落在被跳過的備註步驟，再退一步
+  if(STEPS[step]==='f' && !showNote()){ step--; }
+  if(step<0){ cancelAll(); return; }
+  renderStep();
+}
+
+/* 是否顯示備註步驟：只有客編 Q-1 或 H-86 才顯示 */
+function showNote(){
+  return cur.b==='Q-1' || cur.b==='H-86';
+}
+
+/* 前進一步，並自動跳過不需顯示的備註步驟 */
+function advanceStep(){
+  step++;
+  if(STEPS[step]==='f' && !showNote()){
+    cur.f=''; cur.fManual='';  // 跳過的備註清空
+    step++;
+  }
+  renderStep();
 }
 
 /* B 客編：兩層選取 — 先字母、再編號。bLetter 記錄目前選的字母 */
@@ -465,10 +484,13 @@ function renderBTiles(stepLabel){
       const n=all.filter(x=>x[0].toUpperCase()===L).length;
       return `<div class="tile" onclick="pickBLetter('${L}')">${L}<span style="font-size:11px;color:var(--sub);display:block;">${n}</span></div>`;
     }).join('');
+    // Q-1 常用快速鈕（若清單裡有 Q-1）
+    const hasQ1 = all.includes('Q-1');
+    const quickQ1 = hasQ1 ? `<div class="tile" style="grid-column:1 / -1;background:var(--accent);color:#fff;border-color:var(--accent);font-size:18px;" onclick="pickB('Q-1')">⚡ Q-1（常用）</div>` : '';
     body.innerHTML=`
       <div class="step">${stepLabel}</div>
       <h2>客戶編號 — 選字母</h2>
-      <div class="tiles" style="grid-template-columns:1fr 1fr 1fr 1fr;">${letterTiles}</div>
+      <div class="tiles" style="grid-template-columns:1fr 1fr 1fr 1fr;">${quickQ1}${letterTiles}</div>
       <div style="font-size:13px;color:var(--sub);margin:14px 0 6px;">或直接手動輸入（自動大寫）</div>
       <input class="fld upper" id="fld" inputmode="text" autocapitalize="characters" placeholder="點這裡輸入客編" value="${cur.bManual||''}">
       <div class="row">
@@ -499,7 +521,7 @@ function backToLetters(){ bLetter=null; renderBTiles(''); }
 /* 點編號直接進下一步 */
 function pickB(val){
   cur.b=val; cur.bManual=''; bLetter=null;
-  step++; renderStep();
+  advanceStep();
 }
 
 /* F 備註：常用磚塊 + 底部手動輸入，不自動彈鍵盤，可留空 */
@@ -528,7 +550,7 @@ function renderNote(stepLabel){
 /* 點磚塊直接進下一步 */
 function pickF(val){
   cur.f=val; cur.fManual='';
-  step++; renderStep();
+  advanceStep();
 }
 
 /* G 重量：App 內建數字鍵盤，不依賴 iOS 系統鍵盤 */
@@ -610,7 +632,7 @@ function renderTiles(stepLabel){
 /* 點磚塊直接進下一步 */
 function pickC(val){
   cur.c=val;
-  step++; renderStep();
+  advanceStep();
 }
 
 function renderQty(stepLabel){
@@ -654,7 +676,7 @@ function nextStep(){
     cur.g = raw===''?'':raw;
     saveThis(); return;
   }
-  step++; renderStep();
+  advanceStep();
 }
 
 /* ====== 儲存這筆 ====== */
