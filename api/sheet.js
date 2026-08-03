@@ -7,6 +7,10 @@
 //   SHEET_NAME         : 分頁名稱（宅配資料庫）
 
 export default async function handler(req, res) {
+  // GET：回報版本，用來確認 Vercel 跑的是不是最新版
+  if (req.method === 'GET') {
+    return res.status(200).json({ ok: true, version: 'v3-quote-date', ts: new Date().toISOString() });
+  }
   // 同源呼叫不需要 CORS 設定；保留 POST 限制
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
